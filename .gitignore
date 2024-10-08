@@ -1,0 +1,9 @@
+.env 
+*.log
+data/ 
+llama_local_model/
+models/
+__pycache__/
+experiments.ipynb
+tests.ipynb 
+tests.py 
