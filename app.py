@@ -11,22 +11,50 @@ import numpy as np
 warnings.filterwarnings('ignore')
 torch.cuda.empty_cache()
 
+torch.mps.empty_cache()
+
 app = Flask(__name__)
 
 # Load the model and tokenizer at startup
-model_name = "TinyLlama/TinyLlama-1.1B-step-50K-105b"
+# model_name = "TinyLlama/TinyLlama-1.1B-step-50K-105b"
+model_name = "aifeifei798/DarkIdol-Llama-3.1-8B-Instruct-1.2-Uncensored"
 
 tokenizer = AutoTokenizer.from_pretrained(model_name)
+
+
 # Add this line to set the pad token
 tokenizer.pad_token = tokenizer.eos_token
-base_model = AutoModelForCausalLM.from_pretrained(model_name)
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+tokenizer.pad_token_id = tokenizer.eos_token_id
+
+########################################
+#### load from remote ####
+# base_model = AutoModelForCausalLM.from_pretrained(model_name)
+# base_model = AutoModelForCausalLM.from_pretrained(model_name, low_cpu_mem_usage=True)
+# model = AutoModelForCausalLM.from_pretrained("local_models", device_map="auto", local_files_only=True)
+# base_model.save_pretrained("local_models", safe_serialization=True)
+
+#### load from local ####
+base_model = AutoModelForCausalLM.from_pretrained("local_models", device_map="auto", local_files_only=True)
+
+print ("saved base model to local_models")
+########################################
+
+
+if torch.backends.mps.is_available():
+    mps_device = torch.device("mps")
+    x = torch.ones(1, device=mps_device)
+    print(x)
+else:
+    print("MPS device not found.")
+
+base_model = base_model.to("cuda:0" if torch.cuda.is_available() else "mps:0" if torch.backends.mps.is_available() else "cpu")
 base_model.to(device)
 
 # Wrap the model with ControlModel
 control_layers = list(range(-5, -18, -1))
 model = ControlModel(base_model, control_layers)
 model.to(device)
+
 
 user_tag = "<|start_header_id|>user<|end_header_id|>You: "
 asst_tag = "<|eot_id|><|start_header_id|>assistant<|end_header_id|>Assistant:"
@@ -231,7 +259,8 @@ def generate_completion():
     
         # Generation settings
         default_settings = {
-            "pad_token_id": tokenizer.eos_token_id,
+            # "pad_token_id": tokenizer.pad_token_id,
+            # "eos_token_id": tokenizer.eos_token_id,
             "do_sample": False,
             "max_new_tokens": 256,
             "repetition_penalty": 1.1,

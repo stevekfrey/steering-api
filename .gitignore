@@ -5,5 +5,6 @@ llama_local_model/
 models/
 __pycache__/
 experiments.ipynb
-tests.ipynb 
-tests.py 
+tests.ipynb
+local_models/
+get_started.py 
