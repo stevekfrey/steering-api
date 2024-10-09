@@ -1,8 +1,18 @@
 import unittest
 import requests
 import json
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
 
 BASE_URL = 'http://localhost:5000'
+REMOTE_URL = os.getenv('REMOTE_URL')
+if not REMOTE_URL:
+    raise Exception("REMOTE_URL environment variable not set")
+
+CURRENT_URL = REMOTE_URL
+print (f"Using {CURRENT_URL} for testing")
 
 user_tag = "<|start_header_id|>user<|end_header_id|>You: "
 asst_tag = "<|eot_id|><|start_header_id|>assistant<|end_header_id|>Assistant: "
@@ -62,7 +72,7 @@ class TestAppEndpoints(unittest.TestCase):
         """Test creating a new
          steerable model."""
         print("Creating steerable model")
-        url = f"{BASE_URL}/steerable-model"
+        url = f"{CURRENT_URL}/steerable-model"
         response = requests.post(url, json=create_model_data)
         self.assertEqual(response.status_code, 201)
         data = response.json()
@@ -73,7 +83,7 @@ class TestAppEndpoints(unittest.TestCase):
     def test_2_get_steerable_model(self):
         """Test retrieving a specific steerable model."""
         self.assertIsNotNone(TestAppEndpoints.model_id)
-        url = f"{BASE_URL}/steerable-model/{TestAppEndpoints.model_id}"
+        url = f"{CURRENT_URL}/steerable-model/{TestAppEndpoints.model_id}"
         response = requests.get(url)
         self.assertEqual(response.status_code, 200)
         data = response.json()
@@ -82,7 +92,7 @@ class TestAppEndpoints(unittest.TestCase):
 
     def test_3_list_steerable_models(self):
         """Test listing steerable models."""
-        url = f"{BASE_URL}/steerable-model"
+        url = f"{CURRENT_URL}/steerable-model"
         response = requests.get(url)
         self.assertEqual(response.status_code, 200)
         data = response.json()
@@ -130,7 +140,7 @@ class TestAppEndpoints(unittest.TestCase):
     def test_5_delete_steerable_model(self):
         """Test deleting a steerable model."""
         self.assertIsNotNone(TestAppEndpoints.model_id)
-        url = f"{BASE_URL}/steerable-model/{TestAppEndpoints.model_id}"
+        url = f"{CURRENT_URL}/steerable-model/{TestAppEndpoints.model_id}"
         response = requests.delete(url)
         self.assertEqual(response.status_code, 200)
         data = response.json()
@@ -140,7 +150,7 @@ class TestAppEndpoints(unittest.TestCase):
     # Helper method
     def generate_completion_with_prompt(self, model_id, prompt, control_settings, settings=None):
         """Helper function to generate completion."""
-        url = f"{BASE_URL}/completions"
+        url = f"{CURRENT_URL}/completions"
         payload = {
             "model": model_id,
             "prompt": prompt,
