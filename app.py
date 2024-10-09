@@ -122,6 +122,10 @@ def create_dataset_and_train_vector(synonyms, antonyms, suffix_list, template=DE
 # Main Endpoints 
 ################################################
 
+@app.route('/', methods=['GET'])
+def index():
+    return "Hello from Steer-API!"
+
 # Endpoint to create a steerable model
 @app.route('/steerable-model', methods=['POST'])
 def create_steerable_model():
@@ -251,12 +255,18 @@ def generate_completion():
         model = current_app.config['MODEL']
         tokenizer = current_app.config['TOKENIZER']
     
-        # Prepare the input
         input_text = f"{user_tag}{prompt}{asst_tag}"
-        input_ids = tokenizer.encode(input_text, return_tensors='pt')
-    
-        # Move input_ids to the same device as the model
-        input_ids = input_ids.to(next(model.parameters()).device)
+        encoding = tokenizer.encode_plus(
+            input_text,
+            return_tensors='pt',
+            padding=True,
+            truncation=True,
+            max_length=tokenizer.model_max_length,
+        )
+
+        # Move tensors to the same device as the model
+        input_ids = encoding['input_ids'].to(next(model.parameters()).device)
+        attention_mask = encoding['attention_mask'].to(next(model.parameters()).device)
     
         # Check if the model name corresponds to a model saved in local storage
         steerable_model = steerable_models_vector_storage.get(model_name_request)
@@ -288,15 +298,20 @@ def generate_completion():
             "do_sample": False,
             "max_new_tokens": 256,
             "repetition_penalty": 1.1,
+            "pad_token_id": tokenizer.pad_token_id,
         }
         generation_settings = {**default_settings, **generation_settings}
     
         # Log generation settings
         app.logger.debug('Generation settings', extra={'generation_settings': generation_settings})
     
-        # Generate the output
+        # Generate the output with attention_mask
         with torch.no_grad():
-            output_ids = model.generate(input_ids=input_ids, **generation_settings)
+            output_ids = model.generate(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                **generation_settings
+            )
         generated_text = tokenizer.decode(output_ids[0], skip_special_tokens=True)
 
         # Parse and format the generated text

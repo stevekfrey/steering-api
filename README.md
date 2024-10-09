@@ -18,5 +18,9 @@ If the trait isn't specified in control_settings, it defaults to 0.0
 
 ### Misc implementation notes 
 
+####Control Vectors
 Start with a zero vector: starting from zero ensures that if control_settings is empty or if all its weights are zero, then vector_mix will also correctly be set to 0 (ie no influence applied).
+
+####Deployment
+`gunicorn app:app --workers 2 --threads 1 --bind 0.0.0.0:5000`
 
