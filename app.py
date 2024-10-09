@@ -268,7 +268,7 @@ def generate_completion():
             # "pad_token_id": tokenizer.pad_token_id,
             # "eos_token_id": tokenizer.eos_token_id,
             "do_sample": False,
-            "max_new_tokens": 512,
+            "max_new_tokens": 256,
             "repetition_penalty": 1.1,
         }
         generation_settings = {**default_settings, **generation_settings}

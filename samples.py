@@ -56,7 +56,8 @@ def generate_completion(model_id, prompt, control_settings=None):
     payload = {
         "model": model_id,
         "prompt": prompt,
-        "control_settings": control_settings or {}
+        "control_settings": control_settings or {}, 
+        "settings": {"max_new_tokens": 186}
     }
     response = requests.post(f"{BASE_URL}/completions", json=payload)
     if response.status_code == 200:
@@ -78,7 +79,7 @@ def main():
     print(f"Model details: {json.dumps(model_details, indent=2)}")
 
     # Test prompts with different control settings
-    test_control_settings = [
+    control_settings = [
         {},  # No control
         {"materialistic": 2, "optimistic": 2},  # Increase both dimensions
         {"materialistic": -2, "optimistic": -2}  # Decrease both dimensions
@@ -86,7 +87,7 @@ def main():
 
     for prompt in test_prompts:
         print(f"\nTesting prompt: {prompt}")
-        for setting in test_control_settings:
+        for setting in control_settings:
             print(f"\nControl settings: {setting}")
             response = generate_completion(model_id, prompt, setting)
             print(f"Generated response: {response}")
