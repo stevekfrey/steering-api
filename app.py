@@ -10,8 +10,7 @@ import numpy as np
 
 warnings.filterwarnings('ignore')
 torch.cuda.empty_cache()
-
-torch.mps.empty_cache()
+# torch.mps.empty_cache()
 
 app = Flask(__name__)
 
@@ -20,12 +19,8 @@ app = Flask(__name__)
 model_name = "aifeifei798/DarkIdol-Llama-3.1-8B-Instruct-1.2-Uncensored"
 
 tokenizer = AutoTokenizer.from_pretrained(model_name)
-
-
-# Add this line to set the pad token
 tokenizer.pad_token = tokenizer.eos_token
 tokenizer.pad_token_id = tokenizer.eos_token_id
-
 ########################################
 #### load from remote ####
 # base_model = AutoModelForCausalLM.from_pretrained(model_name)
@@ -38,8 +33,6 @@ base_model = AutoModelForCausalLM.from_pretrained("local_models", device_map="au
 
 print ("saved base model to local_models")
 ########################################
-
-
 if torch.backends.mps.is_available():
     mps_device = torch.device("mps")
     x = torch.ones(1, device=mps_device)
@@ -47,7 +40,7 @@ if torch.backends.mps.is_available():
 else:
     print("MPS device not found.")
 
-base_model = base_model.to("cuda:0" if torch.cuda.is_available() else "mps:0" if torch.backends.mps.is_available() else "cpu")
+device = "cuda:0" if torch.cuda.is_available() else "mps:0" if torch.backends.mps.is_available() else "cpu"
 base_model.to(device)
 
 # Wrap the model with ControlModel
@@ -55,17 +48,30 @@ control_layers = list(range(-5, -18, -1))
 model = ControlModel(base_model, control_layers)
 model.to(device)
 
+########################################
+# In-memory storage for steerable models and their control vectors
+steerable_models_vector_storage = {}
 
+########################################
 user_tag = "<|start_header_id|>user<|end_header_id|>You: "
 asst_tag = "<|eot_id|><|start_header_id|>assistant<|end_header_id|>Assistant:"
+
 DEFAULT_TEMPLATE = "I am a {persona} person."
 
-# In-memory storage for steerable models and their control vectors
-steerable_models = {}
-
-
-
-# Function to create a contrastive dataset
+DEFAULT_SUFFIX_LIST = [
+    "", "That game", "I can see", "Hmm, this", "I can relate to", "Who is",
+    "I understand the", "Ugh,", "What the hell was", "Hey, did anyone", "Although",
+    "Thank you for choosing", "What are you", "Oh w", "How dare you open",
+    "It was my pleasure", "I'm hon", "I appreciate that you", "Are you k",
+    "Whoever left this", "It's always", "Ew,", "Hey, I l", "Hello? Is someone",
+    "I understand that", "That poem", "Aww, poor", "Hey, it", "Alright, who",
+    "I didn't", "Well, life", "The document", "Oh no, this", "I'm concerned",
+    "Hello, this is", "This art", "Hmm, this drink", "Hi there!", "It seems",
+    "Is", "Good", "I can't", "Ex", "Who are", "I can see that", "Wow,",
+    "Today is a", "Hey friend", "Sometimes friends"
+]
+########################################
+# Create a contrastive dataset
 def make_contrastive_dataset(
     positive_personas: list,
     negative_personas: list,
@@ -88,16 +94,14 @@ def make_contrastive_dataset(
                 )
     return dataset
 
-# If ControlVector.zero_like() is not available, you can implement it or use an alternative method to create a zero control vector. Here's a possible implementation:
+# Mimics the zeros_like from torch, for ControlVector
 @staticmethod
-def zeros_like(control_vector):
+def create_vector_with_zeros_like(control_vector):
     zero_directions = {k: torch.zeros_like(torch.tensor(v)) if isinstance(v, np.ndarray) else torch.zeros_like(v) 
                        for k, v in control_vector.directions.items()}
     return ControlVector(model_type=control_vector.model_type, directions=zero_directions)
 
-
-
-# Function to create dataset and train control vector
+# Create dataset and train control vector
 def create_dataset_and_train_vector(synonyms, antonyms, suffix_list, template=DEFAULT_TEMPLATE):
     dataset = make_contrastive_dataset(synonyms, antonyms, suffix_list, template)
     model.reset()
@@ -110,7 +114,7 @@ def create_steerable_model():
     data = request.get_json()
     model_label = data.get('model_label')
     control_dimensions = data.get('control_dimensions')
-    suffix_list = data.get('suffix_list', [''])  # Provide a default suffix list
+    suffix_list = data.get('suffix_list', DEFAULT_SUFFIX_LIST) 
 
     # Validate required fields
     if not model_label or not control_dimensions:
@@ -120,39 +124,40 @@ def create_steerable_model():
     unique_id = uuid.uuid4().hex[:4]
 
     # Create the steering model name
-    steering_model = f"{model_label}-{unique_id}"
+    steering_model_full_id = f"{model_label}-{unique_id}"
 
     # Prepare to store control vectors for each dimension
     control_vectors = {}
 
     # Create control vectors for each dimension
     for trait, (synonyms, antonyms) in control_dimensions.items():
-        control_vector = create_dataset_and_train_vector(synonyms, antonyms, suffix_list)
-        control_vectors[trait] = control_vector
+        control_vectors[trait] = create_dataset_and_train_vector(synonyms, antonyms, suffix_list)
 
     # Store the steerable model with its control vectors
-    steerable_model = {
-        'id': steering_model,
+    steerable_model_with_vectors = {
+        'id': steering_model_full_id,
         'object': 'steerable_model',
         'created_at': datetime.datetime.utcnow().isoformat(),
         'model': model_name,
-        'steering_model': steering_model,
         'control_vectors': control_vectors  # Stored internally, not returned to the user
     }
 
     # Save the steerable model using the full model ID as the key
-    steerable_models[steering_model] = steerable_model
+    steerable_models_vector_storage[steering_model_full_id] = steerable_model_with_vectors
 
     # Return the response without control vectors
     response = {
-        'id': steering_model,
+        'id': steering_model_full_id,
         'object': 'steerable_model',
-        'created_at': steerable_model['created_at'],
-        'model': model_name,
-        'steering_model': steering_model
+        'created_at': steerable_model_with_vectors['created_at'],
+        'model': model_name
     }
 
     return jsonify(response), 201
+
+## For internal use, create a zero vector dataset for steering
+# TODO call
+zero_vector_dataset = create_dataset_and_train_vector("", [""], model, tokenizer, [""], template=DEFAULT_TEMPLATE)
 
 # Endpoint to list steerable models
 @app.route('/steerable-models', methods=['GET'])
@@ -161,7 +166,7 @@ def list_steerable_models():
     offset = request.args.get('offset', default=0, type=int)
 
     # Get the list of steerable models
-    models_list = list(steerable_models.values())
+    models_list = list(steerable_models_vector_storage.values())
 
     # Apply pagination
     models_list = models_list[offset:offset+limit]
@@ -180,7 +185,7 @@ def list_steerable_models():
 # Endpoint to retrieve a specific steerable model
 @app.route('/steerable-models/<model_id>', methods=['GET'])
 def get_steerable_model(model_id):
-    model = steerable_models.get(model_id)
+    model = steerable_models_vector_storage.get(model_id)
     if not model:
         return jsonify({'error': 'Steerable model not found'}), 404
 
@@ -197,8 +202,8 @@ def get_steerable_model(model_id):
 # Endpoint to delete a steerable model
 @app.route('/steerable-models/<model_id>', methods=['DELETE'])
 def delete_steerable_model(model_id):
-    if model_id in steerable_models:
-        del steerable_models[model_id]
+    if model_id in steerable_models_vector_storage:
+        del steerable_models_vector_storage[model_id]
         return jsonify({
             'id': model_id,
             'object': 'steerable_model',
@@ -234,27 +239,27 @@ def generate_completion():
         input_text = f"{user_tag}{prompt}{asst_tag}"
         input_ids = tokenizer.encode(input_text, return_tensors='pt').to(device)
     
-        # Check if the model name corresponds to a steerable model
-        steerable_model = steerable_models.get(model_name_request)
+        # Check if the model name corresponds to a model saved in local storage 
+        steerable_model = steerable_models_vector_storage.get(model_name_request)
         if steerable_model:
-            # Retrieve the control vectors
             control_vectors = steerable_model['control_vectors']
-    
-            # Build the combined control vector
-            # Start with a zero vector using the zero_like function you defined
-            zero_vector = zeros_like(next(iter(control_vectors.values())))
+
+            # Start with a zero vector using the zero_like 
+            matching_zero_vector = create_vector_with_zeros_like(next(iter(control_vectors.values())))
             vector_mix = sum(
                 (control_vectors[trait] * control_settings.get(trait, 0.0) for trait in control_vectors),
-                start=zero_vector
+                start=matching_zero_vector
             )
     
             # Apply the control vector to the model if any control is applied
             if any(control_settings.get(trait, 0.0) != 0.0 for trait in control_vectors):
                 model.set_control(vector_mix)
             else:
+                print(f"No control vectors found in model '{model_name_request}' matching '{control_settings}'. Using base model for generation")
                 model.reset()
         else:
             # Use the base model (no control vectors)
+            print(f"No prior model found for name '{model_name_request}'. Using base model for generation")
             model.reset()
     
         # Generation settings

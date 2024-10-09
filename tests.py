@@ -5,20 +5,35 @@ import time
 # Base URL of the API
 BASE_URL = 'http://localhost:5000'
 
+user_tag = "<|start_header_id|>user<|end_header_id|>You: "
+asst_tag = "<|eot_id|><|start_header_id|>assistant<|end_header_id|>Assistant:"
+DEFAULT_TEMPLATE = "I am a {persona} person."
+
 # Test data for creating a steerable model
 create_model_data = {
     "model_label": "testmodel",
     "control_dimensions": {
-        "politeness": [
-            ["polite", "courteous", "respectful"],
-            ["rude", "impolite", "disrespectful"]
+        "materialistic": [
+            ["materialistic", "consumerist", "acquisitive"],
+            ["spiritual", "altruistic", "ascetic"]
         ],
-        "rude": [
-            ["rude", "impolite", "disrespectful"],
-            ["polite", "courteous", "respectful"]
+        "optimistic": [
+            ["optimistic", "happy go lucky", "cheerful"],
+            ["pessimistic", "gloomy", "negative"]
         ]
     },
-    "suffix_list": ["How are you?", "Thank you.", "Can I help you?", "What do you think?"]
+        "suffix_list": [
+        "", "That game", "I can see", "Hmm, this", "I can relate to", "Who is",
+        "I understand the", "Ugh,", "What the hell was", "Hey, did anyone", "Although",
+        "Thank you for choosing", "What are you", "Oh w", "How dare you open",
+        "It was my pleasure", "I'm hon", "I appreciate that you", "Are you k",
+        "Whoever left this", "It's always", "Ew,", "Hey, I l", "Hello? Is someone",
+        "I understand that", "That poem", "Aww, poor", "Hey, it", "Alright, who",
+        "I didn't", "Well, life", "The document", "Oh no, this", "I'm concerned",
+        "Hello, this is", "This art", "Hmm, this drink", "Hi there!", "It seems",
+        "Is", "Good", "I can't", "Ex", "Who are", "I can see that", "Wow,",
+        "Today is a", "Hey friend", "Sometimes friends"
+    ]
 }
 
 # List of test prompts
@@ -50,18 +65,16 @@ def test_create_steerable_model():
         print("Failed to create steerable model:", response.text)
         return None
 
-def test_generate_completion(model_id, prompt, politeness, rudeness):
-    print(f"\nTesting: Generate Completion for '{prompt}'")
-    print(f"Politeness: {politeness}, Rudeness: {rudeness}")
+def test_generate_completion(model_id, prompt, control_settings):
+    full_prompt = f"{user_tag}{prompt}{asst_tag}"
+    
     generate_completion_data = {
         "model": model_id,
-        "prompt": prompt,
-        "control_settings": {
-            "politeness": politeness,
-            "rude": rudeness
-        },
+        "prompt": full_prompt,
+        "control_settings": control_settings,
         "settings": {}
     }
+    print(f"Test with Control Settings: {control_settings}")
     response = requests.post(
         f"{BASE_URL}/completions",
         headers={"Content-Type": "application/json"},
@@ -85,14 +98,31 @@ def test_delete_steerable_model(model_id):
 
 if __name__ == "__main__":
     model_id = test_create_steerable_model()
+
     if model_id:
+        test_prompts = [
+            "Can you help me with my homework?",
+            "I disagree with your opinion.",
+            "What's the best way to learn a new language?",
+            "Tell me a joke.",
+            "Explain quantum computing in simple terms."
+        ]
+        
         for prompt in test_prompts:
-            # Test with high rudeness, low politeness
-            test_generate_completion(model_id, prompt, -2.0, 2.0)
+            # Test with high materialistic, cold, and selfish traits
+            control_settings = {
+                'materialistic': 2.0,
+                'optimistic': 2.0,
+            }
+            test_generate_completion(model_id, prompt, control_settings)
             time.sleep(1)  # Add a small delay between requests
             
-            # Test with high politeness, low rudeness
-            test_generate_completion(model_id, prompt, 2.0, -2.0)
+            # Test with low materialistic, cold, and selfish traits
+            control_settings = {
+                'materialistic': -2.0,
+                'optimistic': -2.0,
+            }
+            test_generate_completion(model_id, prompt, control_settings)
             time.sleep(1)  # Add a small delay between requests
         
         test_delete_steerable_model(model_id)
