@@ -1,70 +1,64 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, current_app
 import uuid
 import datetime
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from repeng import ControlVector, ControlModel, DatasetEntry
-import pickle
 import warnings
 import numpy as np
 import traceback
+import json_log_formatter
 import logging
-# Set up logging
-logging.basicConfig(level=logging.DEBUG)
+from steer_templates import DEFAULT_TEMPLATE, DEFAULT_SUFFIX_LIST, user_tag, asst_tag, BASE_MODEL_NAME
 
+# Set up structured JSON logging
+formatter = json_log_formatter.JSONFormatter()
+
+json_handler = logging.StreamHandler()
+json_handler.setFormatter(formatter)
+
+################################################
+# Flask setup
+################################################
+app = Flask(__name__)
+app.logger.addHandler(json_handler)
+app.logger.setLevel(logging.INFO)
+
+################################################
+# Load model 
+################################################
 warnings.filterwarnings('ignore')
 torch.cuda.empty_cache()
-# torch.mps.empty_cache()
 
-app = Flask(__name__)
+def load_model():
+    # Model loading code
+    model_name = BASE_MODEL_NAME
+    
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.pad_token_id = tokenizer.eos_token_id
+    
+    base_model = AutoModelForCausalLM.from_pretrained("steer-api/local_models", device_map="auto", local_files_only=True)
+    
+    app.logger.info("Loaded base model from steer-api/local_models")
+    
+    # Wrap the model with ControlModel
+    control_layers = list(range(-5, -18, -1))
+    model = ControlModel(base_model, control_layers)
+    
+    return model, tokenizer
 
-# Load the model and tokenizer at startup
-# model_name = "TinyLlama/TinyLlama-1.1B-step-50K-105b"
-model_name = "aifeifei798/DarkIdol-Llama-3.1-8B-Instruct-1.2-Uncensored"
+# Load the model at startup and store in app config
+with app.app_context():
+    app.config['MODEL'], app.config['TOKENIZER'] = load_model()
+    app.config['MODEL_NAME'] = BASE_MODEL_NAME 
 
-tokenizer = AutoTokenizer.from_pretrained(model_name)
-tokenizer.pad_token = tokenizer.eos_token
-tokenizer.pad_token_id = tokenizer.eos_token_id
-########################################
-#### load from remote ####
-# base_model = AutoModelForCausalLM.from_pretrained(model_name)
-# base_model = AutoModelForCausalLM.from_pretrained(model_name, low_cpu_mem_usage=True)
-# model = AutoModelForCausalLM.from_pretrained("local_models", device_map="auto", local_files_only=True)
-# base_model.save_pretrained("local_models", safe_serialization=True)
-
-#### load from local ####
-base_model = AutoModelForCausalLM.from_pretrained("steer-api/local_models", device_map="auto", local_files_only=True)
-
-logging.info("Loaded base model from steer-api/local_models")
-
-# Wrap the model with ControlModel
-control_layers = list(range(-5, -18, -1))
-model = ControlModel(base_model, control_layers)
-
-########################################
+################################################
+# Data Helpers 
+################################################
 # In-memory storage for steerable models and their control vectors
 steerable_models_vector_storage = {}
 
-########################################
-user_tag = "<|start_header_id|>user<|end_header_id|>You: "
-
-asst_tag = "<|eot_id|><|start_header_id|>assistant<|end_header_id|>Assistant:"
-
-DEFAULT_TEMPLATE = "I am a {persona} person."
-
-DEFAULT_SUFFIX_LIST = [
-    "", "That game", "I can see", "Hmm, this", "I can relate to", "Who is",
-    "I understand the", "Ugh,", "What the hell was", "Hey, did anyone", "Although",
-    "Thank you for choosing", "What are you", "Oh w", "How dare you open",
-    "It was my pleasure", "I'm hon", "I appreciate that you", "Are you k",
-    "Whoever left this", "It's always", "Ew,", "Hey, I l", "Hello? Is someone",
-    "I understand that", "That poem", "Aww, poor", "Hey, it", "Alright, who",
-    "I didn't", "Well, life", "The document", "Oh no, this", "I'm concerned",
-    "Hello, this is", "This art", "Hmm, this drink", "Hi there!", "It seems",
-    "Is", "Good", "I can't", "Ex", "Who are", "I can see that", "Wow,",
-    "Today is a", "Hey friend", "Sometimes friends"
-]
-########################################
 # Create a contrastive dataset
 def make_contrastive_dataset(
     positive_personas: list,
@@ -72,6 +66,9 @@ def make_contrastive_dataset(
     suffix_list: list,
     template: str = DEFAULT_TEMPLATE
 ) -> list:
+    # Access the tokenizer from app config
+    tokenizer = current_app.config['TOKENIZER']
+
     dataset = []
     for suffix in suffix_list:
         tokens = tokenizer.tokenize(suffix)
@@ -88,13 +85,14 @@ def make_contrastive_dataset(
                 )
     return dataset
 
-def print_chat(full_string, role = "assistant"):
-    for element in full_string.split(f"<|start_header_id|>{role}<|end_header_id|>")[1:]:
-        print(element.strip("<|eot_id|>"))
+# def print_chat(full_string, role="assistant"):
+#     for element in full_string.split(f"<|start_header_id|>{role}<|end_header_id|>")[1:]:
+#         print(element.strip("<|eot_id|>"))
 
 def parse_assistant_response(full_string):
     # Split the string and get the last part (assistant's response)
-    parts = full_string.split("<|start_header_id|>assistant<|end_header_id|>")
+    # parts = full_string.split("<|start_header_id|>assistant<|end_header_id|>")
+    parts = full_string.split("Assistant:")
     if len(parts) > 1:
         response = parts[-1].strip()
         # Remove any trailing <|eot_id|> tag
@@ -103,75 +101,88 @@ def parse_assistant_response(full_string):
     return ""
 
 # Mimics the zeros_like from torch, for ControlVector
-@staticmethod
 def create_vector_with_zeros_like(control_vector):
-    zero_directions = {k: torch.zeros_like(torch.tensor(v)) if isinstance(v, np.ndarray) else torch.zeros_like(v) 
+    zero_directions = {k: torch.zeros_like(torch.tensor(v)) if isinstance(v, np.ndarray) else torch.zeros_like(v)
                        for k, v in control_vector.directions.items()}
     return ControlVector(model_type=control_vector.model_type, directions=zero_directions)
 
+
 # Create dataset and train control vector
 def create_dataset_and_train_vector(synonyms, antonyms, suffix_list, template=DEFAULT_TEMPLATE):
+    # Access the model and tokenizer from app config
+    model = current_app.config['MODEL']
+    tokenizer = current_app.config['TOKENIZER']
+
     dataset = make_contrastive_dataset(synonyms, antonyms, suffix_list, template)
     model.reset()
     control_vector = ControlVector.train(model, tokenizer, dataset)
     return control_vector
 
+################################################
+# Main Endpoints 
+################################################
+
 # Endpoint to create a steerable model
-@app.route('/steerable-models', methods=['POST'])
+@app.route('/steerable-model', methods=['POST'])
 def create_steerable_model():
-    data = request.get_json()
-    model_label = data.get('model_label')
-    control_dimensions = data.get('control_dimensions')
-    suffix_list = data.get('suffix_list', DEFAULT_SUFFIX_LIST) 
+    try:
+        data = request.get_json()
+        model_label = data.get('model_label')
+        control_dimensions = data.get('control_dimensions')
+        suffix_list = data.get('suffix_list', DEFAULT_SUFFIX_LIST) 
 
-    # Validate required fields
-    if not model_label or not control_dimensions:
-        return jsonify({'error': 'model_label and control_dimensions are required'}), 400
+        # Validate required fields
+        if not model_label or not control_dimensions:
+            app.logger.warning('Invalid request: missing model_label or control_dimensions')
+            return jsonify({'error': 'model_label and control_dimensions are required'}), 400
 
-    # Generate a 4-character unique identifier
-    unique_id = uuid.uuid4().hex[:4]
+        # Generate a 4-character unique identifier
+        unique_id = uuid.uuid4().hex[:4]
 
-    # Create the steering model name
-    steering_model_full_id = f"{model_label}-{unique_id}"
+        # Create the steering model name
+        steering_model_full_id = f"{model_label}-{unique_id}"
 
-    # Prepare to store control vectors for each dimension
-    control_vectors = {}
+        # Prepare to store control vectors for each dimension
+        control_vectors = {}
+        model_name = current_app.config['MODEL_NAME']
 
-    # Create control vectors for each dimension
-    for trait, (synonyms, antonyms) in control_dimensions.items():
-        control_vectors[trait] = create_dataset_and_train_vector(synonyms, antonyms, suffix_list)
+        # Create control vectors for each dimension
+        for trait, (synonyms, antonyms) in control_dimensions.items():
+            control_vectors[trait] = create_dataset_and_train_vector(synonyms, antonyms, suffix_list)
 
-    # Store the steerable model with its control vectors
-    steerable_model_with_vectors = {
-        'id': steering_model_full_id,
-        'object': 'steerable_model',
-        'created_at': datetime.datetime.utcnow().isoformat(),
-        'model': model_name,
-        'control_vectors': control_vectors  # Stored internally, not returned to the user
-    }
+        # Store the steerable model with its control vectors
+        steerable_model_with_vectors = {
+            'id': steering_model_full_id,
+            'object': 'steerable_model',
+            'created_at': datetime.datetime.utcnow().isoformat(),
+            'model': model_name,
+            'control_vectors': control_vectors  # Stored internally, not returned to the user
+        }
 
-    # Save the steerable model using the full model ID as the key
-    steerable_models_vector_storage[steering_model_full_id] = steerable_model_with_vectors
+        steerable_models_vector_storage[steering_model_full_id] = steerable_model_with_vectors
 
-    # Return the response without control vectors
-    response = {
-        'id': steering_model_full_id,
-        'object': 'steerable_model',
-        'created_at': steerable_model_with_vectors['created_at'],
-        'model': model_name
-    }
+        response = {
+            'id': steering_model_full_id,
+            'object': 'steerable_model',
+            'created_at': steerable_model_with_vectors['created_at'],
+            'model': model_name
+        }
 
-    return jsonify(response), 201
+        app.logger.info('Steerable model created', extra={'model_id': steering_model_full_id})
+        return jsonify(response), 201
+
+    except Exception as e:
+        app.logger.error('Error in create_steerable_model', extra={'error': str(e), 'traceback': traceback.format_exc()})
+        return jsonify({'error': 'An internal error occurred', 'details': str(e)}), 500
 
 # Endpoint to list steerable models
-@app.route('/steerable-models', methods=['GET'])
+@app.route('/steerable-model', methods=['GET'])
 def list_steerable_models():
     limit = request.args.get('limit', default=10, type=int)
     offset = request.args.get('offset', default=0, type=int)
 
     # Get the list of steerable models
     models_list = list(steerable_models_vector_storage.values())
-
     # Apply pagination
     models_list = models_list[offset:offset+limit]
 
@@ -183,13 +194,15 @@ def list_steerable_models():
         'model': model['model'],
     } for model in models_list]
 
+    app.logger.info('Steerable models listed', extra={'limit': limit, 'offset': offset})
     return jsonify({'data': data}), 200
 
 # Endpoint to retrieve a specific steerable model
-@app.route('/steerable-models/<model_id>', methods=['GET'])
+@app.route('/steerable-model/<model_id>', methods=['GET'])
 def get_steerable_model(model_id):
     model = steerable_models_vector_storage.get(model_id)
     if not model:
+        app.logger.warning('Steerable model not found', extra={'model_id': model_id})
         return jsonify({'error': 'Steerable model not found'}), 404
 
     # Return the model details without control vectors
@@ -199,21 +212,23 @@ def get_steerable_model(model_id):
         'created_at': model['created_at'],
         'model': model['model'],
     }
+    app.logger.info('Steerable model retrieved', extra={'model_id': model_id})
     return jsonify(response), 200
 
 # Endpoint to delete a steerable model
-@app.route('/steerable-models/<model_id>', methods=['DELETE'])
+@app.route('/steerable-model/<model_id>', methods=['DELETE'])
 def delete_steerable_model(model_id):
     if model_id in steerable_models_vector_storage:
         del steerable_models_vector_storage[model_id]
+        app.logger.info('Steerable model deleted', extra={'model_id': model_id})
         return jsonify({
             'id': model_id,
             'object': 'steerable_model',
             'deleted': True
         }), 200
     else:
+        app.logger.warning('Steerable model not found for deletion', extra={'model_id': model_id})
         return jsonify({'error': 'Steerable model not found'}), 404
-
 
 @app.route('/completions', methods=['POST'])
 def generate_completion():
@@ -226,10 +241,15 @@ def generate_completion():
     
         # Validate required fields
         if not model_name_request or not prompt:
+            app.logger.warning('Invalid request: missing model or prompt')
             return jsonify({'error': 'Model and prompt are required'}), 400
-    
+
         # Log input data
-        logging.debug(f"Input data: {data}")
+        app.logger.info('Completion requested', extra={'model': model_name_request, 'prompt': prompt})
+
+        # Access the model and tokenizer from app config
+        model = current_app.config['MODEL']
+        tokenizer = current_app.config['TOKENIZER']
     
         # Prepare the input
         input_text = f"{user_tag}{prompt}{asst_tag}"
@@ -238,7 +258,7 @@ def generate_completion():
         # Move input_ids to the same device as the model
         input_ids = input_ids.to(next(model.parameters()).device)
     
-        # Check if the model name corresponds to a model saved in local storage 
+        # Check if the model name corresponds to a model saved in local storage
         steerable_model = steerable_models_vector_storage.get(model_name_request)
         if steerable_model:
             control_vectors = steerable_model['control_vectors']
@@ -253,20 +273,18 @@ def generate_completion():
     
             # Apply the control vector to the model, if nonzero 
             if any(control_settings.get(trait, 0.0) != 0.0 for trait in control_vectors):
-                model.set_control(vector_mix) # this iterates through and updates each individual layer in the current model  
-
+                model.set_control(vector_mix)  # This updates the model's control vectors
+                app.logger.info('Control vector applied', extra={'control_settings': control_settings})
             else:
-                logging.info(f"No control vectors found in model '{model_name_request}' matching '{control_settings}'. Using base model for generation")
+                app.logger.info(f"No control vectors found matching settings. Using base model for generation", extra={'model': model_name_request})
                 model.reset()
         else:
             # Use the base model (no control vectors)
-            logging.info(f"No prior model found for name '{model_name_request}'. Using base model for generation")
+            app.logger.info(f"No prior model found for name '{model_name_request}'. Using base model for generation")
             model.reset()
     
         # Generation settings
         default_settings = {
-            # "pad_token_id": tokenizer.pad_token_id,
-            # "eos_token_id": tokenizer.eos_token_id,
             "do_sample": False,
             "max_new_tokens": 256,
             "repetition_penalty": 1.1,
@@ -274,7 +292,7 @@ def generate_completion():
         generation_settings = {**default_settings, **generation_settings}
     
         # Log generation settings
-        logging.debug(f"Generation settings: {generation_settings}")
+        app.logger.debug('Generation settings', extra={'generation_settings': generation_settings})
     
         # Generate the output
         with torch.no_grad():
@@ -296,12 +314,22 @@ def generate_completion():
             'content': formatted_response,
         }
     
+        app.logger.info('Completion generated', extra={'response_id': response['id']})
         return jsonify(response), 200
     
     except Exception as e:
-        logging.error(f"Error in generate_completion: {str(e)}")
-        logging.error(traceback.format_exc())
+        app.logger.error('Error in generate_completion', extra={'error': str(e), 'traceback': traceback.format_exc()})
         return jsonify({'error': 'An internal error occurred', 'details': str(e)}), 500
+
+# Global error handler
+@app.errorhandler(Exception)
+def handle_exception(e):
+    app.logger.error('Unhandled exception', extra={'error': str(e), 'traceback': traceback.format_exc()})
+    response = {
+        'error': 'An internal error occurred',
+        'details': str(e)
+    }
+    return jsonify(response), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
