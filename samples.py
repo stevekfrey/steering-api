@@ -1,6 +1,8 @@
 import requests
 import json
 
+BASE_MODEL_NAME = "aifeifei798/DarkIdol-Llama-3.1-8B-Instruct-1.2-Uncensored"
+
 BASE_URL = 'http://localhost:5000'
 
 # Sample data for creating a steerable model
@@ -29,7 +31,7 @@ test_prompts = [
 
 def create_steerable_model():
     """Create a new steerable model and return its ID."""
-    response = requests.post(f"{BASE_URL}/steerable-models", json=create_model_data)
+    response = requests.post(f"{BASE_URL}/steerable-model", json=create_model_data)
     if response.status_code == 201:
         return response.json()['id']
     else:
@@ -37,7 +39,7 @@ def create_steerable_model():
 
 def list_steerable_models():
     """List all steerable models."""
-    response = requests.get(f"{BASE_URL}/steerable-models")
+    response = requests.get(f"{BASE_URL}/steerable-model")
     if response.status_code == 200:
         return response.json()['data']
     else:
@@ -45,7 +47,7 @@ def list_steerable_models():
 
 def get_steerable_model(model_id):
     """Get details of a specific steerable model."""
-    response = requests.get(f"{BASE_URL}/steerable-models/{model_id}")
+    response = requests.get(f"{BASE_URL}/steerable-model/{model_id}")
     if response.status_code == 200:
         return response.json()
     else:

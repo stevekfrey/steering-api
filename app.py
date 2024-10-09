@@ -7,10 +7,9 @@ from repeng import ControlVector, ControlModel, DatasetEntry
 import warnings
 import numpy as np
 import traceback
-from flask_restful import Api
 import json_log_formatter
 import logging
-from steer_templates import DEFAULT_TEMPLATE, DEFAULT_SUFFIX_LIST, user_tag, asst_tag
+from steer_templates import DEFAULT_TEMPLATE, DEFAULT_SUFFIX_LIST, user_tag, asst_tag, BASE_MODEL_NAME
 
 # Set up structured JSON logging
 formatter = json_log_formatter.JSONFormatter()
@@ -24,7 +23,6 @@ json_handler.setFormatter(formatter)
 app = Flask(__name__)
 app.logger.addHandler(json_handler)
 app.logger.setLevel(logging.INFO)
-api = Api(app, version='1.0', title='Steerable Models API', description='API for creating and interacting with steerable models')
 
 ################################################
 # Load model 
@@ -34,7 +32,7 @@ torch.cuda.empty_cache()
 
 def load_model():
     # Model loading code
-    model_name = "aifeifei798/DarkIdol-Llama-3.1-8B-Instruct-1.2-Uncensored"
+    model_name = BASE_MODEL_NAME
     
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     tokenizer.pad_token = tokenizer.eos_token
@@ -53,6 +51,8 @@ def load_model():
 # Load the model at startup and store in app config
 with app.app_context():
     app.config['MODEL'], app.config['TOKENIZER'] = load_model()
+    app.config['MODEL_NAME'] = BASE_MODEL_NAME 
+
 ################################################
 # Data Helpers 
 ################################################
@@ -91,7 +91,8 @@ def make_contrastive_dataset(
 
 def parse_assistant_response(full_string):
     # Split the string and get the last part (assistant's response)
-    parts = full_string.split("<|start_header_id|>assistant<|end_header_id|>")
+    # parts = full_string.split("<|start_header_id|>assistant<|end_header_id|>")
+    parts = full_string.split("Assistant:")
     if len(parts) > 1:
         response = parts[-1].strip()
         # Remove any trailing <|eot_id|> tag
@@ -104,6 +105,7 @@ def create_vector_with_zeros_like(control_vector):
     zero_directions = {k: torch.zeros_like(torch.tensor(v)) if isinstance(v, np.ndarray) else torch.zeros_like(v)
                        for k, v in control_vector.directions.items()}
     return ControlVector(model_type=control_vector.model_type, directions=zero_directions)
+
 
 # Create dataset and train control vector
 def create_dataset_and_train_vector(synonyms, antonyms, suffix_list, template=DEFAULT_TEMPLATE):
@@ -142,7 +144,7 @@ def create_steerable_model():
 
         # Prepare to store control vectors for each dimension
         control_vectors = {}
-        model_name = current_app.config['MODEL'].model_type
+        model_name = current_app.config['MODEL_NAME']
 
         # Create control vectors for each dimension
         for trait, (synonyms, antonyms) in control_dimensions.items():
