@@ -7,6 +7,10 @@ from repeng import ControlVector, ControlModel, DatasetEntry
 import pickle
 import warnings
 import numpy as np
+import traceback
+import logging
+# Set up logging
+logging.basicConfig(level=logging.DEBUG)
 
 warnings.filterwarnings('ignore')
 torch.cuda.empty_cache()
@@ -29,24 +33,13 @@ tokenizer.pad_token_id = tokenizer.eos_token_id
 # base_model.save_pretrained("local_models", safe_serialization=True)
 
 #### load from local ####
-base_model = AutoModelForCausalLM.from_pretrained("local_models", device_map="auto", local_files_only=True)
+base_model = AutoModelForCausalLM.from_pretrained("steer-api/local_models", device_map="auto", local_files_only=True)
 
-print ("saved base model to local_models")
-########################################
-if torch.backends.mps.is_available():
-    mps_device = torch.device("mps")
-    x = torch.ones(1, device=mps_device)
-    print(x)
-else:
-    print("MPS device not found.")
-
-device = "cuda:0" if torch.cuda.is_available() else "mps:0" if torch.backends.mps.is_available() else "cpu"
-base_model.to(device)
+logging.info("Loaded base model from steer-api/local_models")
 
 # Wrap the model with ControlModel
 control_layers = list(range(-5, -18, -1))
 model = ControlModel(base_model, control_layers)
-model.to(device)
 
 ########################################
 # In-memory storage for steerable models and their control vectors
@@ -93,6 +86,20 @@ def make_contrastive_dataset(
                     )
                 )
     return dataset
+
+def print_chat(full_string, role = "assistant"):
+    for element in full_string.split(f"<|start_header_id|>{role}<|end_header_id|>")[1:]:
+        print(element.strip("<|eot_id|>"))
+
+def parse_assistant_response(full_string):
+    # Split the string and get the last part (assistant's response)
+    parts = full_string.split("<|start_header_id|>assistant<|end_header_id|>")
+    if len(parts) > 1:
+        response = parts[-1].strip()
+        # Remove any trailing <|eot_id|> tag
+        response = response.rstrip("<|eot_id|>").strip()
+        return response
+    return ""
 
 # Mimics the zeros_like from torch, for ControlVector
 @staticmethod
@@ -155,10 +162,6 @@ def create_steerable_model():
 
     return jsonify(response), 201
 
-## For internal use, create a zero vector dataset for steering
-# TODO call
-zero_vector_dataset = create_dataset_and_train_vector("", [""], model, tokenizer, [""], template=DEFAULT_TEMPLATE)
-
 # Endpoint to list steerable models
 @app.route('/steerable-models', methods=['GET'])
 def list_steerable_models():
@@ -177,7 +180,6 @@ def list_steerable_models():
         'object': model['object'],
         'created_at': model['created_at'],
         'model': model['model'],
-        'steering_model': model['steering_model']
     } for model in models_list]
 
     return jsonify({'data': data}), 200
@@ -195,7 +197,6 @@ def get_steerable_model(model_id):
         'object': model['object'],
         'created_at': model['created_at'],
         'model': model['model'],
-        'steering_model': model['steering_model']
     }
     return jsonify(response), 200
 
@@ -212,12 +213,6 @@ def delete_steerable_model(model_id):
     else:
         return jsonify({'error': 'Steerable model not found'}), 404
 
-# Endpoint to generate a text completion
-import traceback
-import logging
-
-# Set up logging
-logging.basicConfig(level=logging.DEBUG)
 
 @app.route('/completions', methods=['POST'])
 def generate_completion():
@@ -237,7 +232,10 @@ def generate_completion():
     
         # Prepare the input
         input_text = f"{user_tag}{prompt}{asst_tag}"
-        input_ids = tokenizer.encode(input_text, return_tensors='pt').to(device)
+        input_ids = tokenizer.encode(input_text, return_tensors='pt')
+    
+        # Move input_ids to the same device as the model
+        input_ids = input_ids.to(next(model.parameters()).device)
     
         # Check if the model name corresponds to a model saved in local storage 
         steerable_model = steerable_models_vector_storage.get(model_name_request)
@@ -246,20 +244,22 @@ def generate_completion():
 
             # Start with a zero vector using the zero_like 
             matching_zero_vector = create_vector_with_zeros_like(next(iter(control_vectors.values())))
+
             vector_mix = sum(
                 (control_vectors[trait] * control_settings.get(trait, 0.0) for trait in control_vectors),
                 start=matching_zero_vector
             )
     
-            # Apply the control vector to the model if any control is applied
+            # Apply the control vector to the model, if nonzero 
             if any(control_settings.get(trait, 0.0) != 0.0 for trait in control_vectors):
-                model.set_control(vector_mix)
+                model.set_control(vector_mix) # this iterates through and updates each individual layer in the current model  
+
             else:
-                print(f"No control vectors found in model '{model_name_request}' matching '{control_settings}'. Using base model for generation")
+                logging.info(f"No control vectors found in model '{model_name_request}' matching '{control_settings}'. Using base model for generation")
                 model.reset()
         else:
             # Use the base model (no control vectors)
-            print(f"No prior model found for name '{model_name_request}'. Using base model for generation")
+            logging.info(f"No prior model found for name '{model_name_request}'. Using base model for generation")
             model.reset()
     
         # Generation settings
@@ -267,7 +267,7 @@ def generate_completion():
             # "pad_token_id": tokenizer.pad_token_id,
             # "eos_token_id": tokenizer.eos_token_id,
             "do_sample": False,
-            "max_new_tokens": 256,
+            "max_new_tokens": 1024,
             "repetition_penalty": 1.1,
         }
         generation_settings = {**default_settings, **generation_settings}
@@ -279,6 +279,9 @@ def generate_completion():
         with torch.no_grad():
             output_ids = model.generate(input_ids=input_ids, **generation_settings)
         generated_text = tokenizer.decode(output_ids[0], skip_special_tokens=True)
+
+        # Parse and format the generated text
+        formatted_response = parse_assistant_response(generated_text)
     
         # Reset the model control after generation
         model.reset()
@@ -289,14 +292,7 @@ def generate_completion():
             'object': 'text_completion',
             'created': datetime.datetime.utcnow().isoformat(),
             'model': model_name_request,
-            'choices': [
-                {
-                    'text': generated_text,
-                    'index': 0,
-                    'logprobs': None,
-                    'finish_reason': 'stop'
-                }
-            ]
+            'content': formatted_response,
         }
     
         return jsonify(response), 200

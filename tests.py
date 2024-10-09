@@ -1,13 +1,19 @@
+import unittest
 import requests
 import json
-import time
+import uuid
 
-# Base URL of the API
 BASE_URL = 'http://localhost:5000'
 
 user_tag = "<|start_header_id|>user<|end_header_id|>You: "
-asst_tag = "<|eot_id|><|start_header_id|>assistant<|end_header_id|>Assistant:"
+
+asst_tag = "<|eot_id|><|start_header_id|>assistant<|end_header_id|>Assistant: "
+
 DEFAULT_TEMPLATE = "I am a {persona} person."
+
+# Control strength variables
+TEST_CONTROL_INCREASE = 2
+TEST_CONTROL_DECREASE = -2
 
 # Test data for creating a steerable model
 create_model_data = {
@@ -22,7 +28,7 @@ create_model_data = {
             ["pessimistic", "gloomy", "negative"]
         ]
     },
-        "suffix_list": [
+    "suffix_list": [
         "", "That game", "I can see", "Hmm, this", "I can relate to", "Who is",
         "I understand the", "Ugh,", "What the hell was", "Hey, did anyone", "Although",
         "Thank you for choosing", "What are you", "Oh w", "How dare you open",
@@ -36,7 +42,7 @@ create_model_data = {
     ]
 }
 
-# List of test prompts
+# Test prompts to be used for generation
 test_prompts = [
     "Can you help me with my homework?",
     "I disagree with your opinion.",
@@ -50,81 +56,106 @@ test_prompts = [
     "What are the ethical implications of genetic engineering?"
 ]
 
-def test_create_steerable_model():
-    print("Testing: Create Steerable Model")
-    response = requests.post(
-        f"{BASE_URL}/steerable-models",
-        headers={"Content-Type": "application/json"},
-        data=json.dumps(create_model_data)
-    )
-    if response.status_code == 201:
+class TestAppEndpoints(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        """Create a steerable model once for all tests."""
+        url = f"{BASE_URL}/steerable-models"
+        response = requests.post(url, json=create_model_data)
+        if response.status_code == 201:
+            data = response.json()
+            cls.steerable_model_id = data['id']
+            print(f"Created steerable model with ID: {cls.steerable_model_id}")
+        else:
+            raise Exception("Failed to create steerable model")
+
+    @classmethod
+    def tearDownClass(cls):
+        """Delete the steerable model after all tests."""
+        url = f"{BASE_URL}/steerable-models/{cls.steerable_model_id}"
+        response = requests.delete(url)
+        if response.status_code == 200:
+            data = response.json()
+            if data.get('deleted'):
+                print(f"Deleted steerable model with ID: {cls.steerable_model_id}")
+            else:
+                print("Failed to delete steerable model.")
+        else:
+            print("Failed to delete steerable model.")
+
+    def test_get_steerable_model(self):
+        """Test retrieving a specific steerable model."""
+        url = f"{BASE_URL}/steerable-models/{self.steerable_model_id}"
+        response = requests.get(url)
+        self.assertEqual(response.status_code, 200)
         data = response.json()
-        print("Steerable Model Created:", data)
-        return data['id']
-    else:
-        print("Failed to create steerable model:", response.text)
-        return None
+        self.assertEqual(data['id'], self.steerable_model_id)
+        print(f"Retrieved steerable model with ID: {self.steerable_model_id}")
 
-def test_generate_completion(model_id, prompt, control_settings):
-    full_prompt = f"{user_tag}{prompt}{asst_tag}"
-    
-    generate_completion_data = {
-        "model": model_id,
-        "prompt": full_prompt,
-        "control_settings": control_settings,
-        "settings": {}
-    }
-    print(f"Test with Control Settings: {control_settings}")
-    response = requests.post(
-        f"{BASE_URL}/completions",
-        headers={"Content-Type": "application/json"},
-        data=json.dumps(generate_completion_data)
-    )
-    if response.status_code == 200:
+    def test_list_steerable_models(self):
+        """Test listing steerable models."""
+        url = f"{BASE_URL}/steerable-models"
+        response = requests.get(url)
+        self.assertEqual(response.status_code, 200)
         data = response.json()
-        print("Generated Completion:")
-        print(data['choices'][0]['text'])
-    else:
-        print("Failed to generate completion:", response.text)
+        self.assertIn('data', data)
+        print(f"Listed steerable models: {[model['id'] for model in data['data']]}")
 
-def test_delete_steerable_model(model_id):
-    print("\nTesting: Delete Steerable Model")
-    response = requests.delete(f"{BASE_URL}/steerable-models/{model_id}")
-    if response.status_code == 200:
-        data = response.json()
-        print("Deleted Steerable Model:", data)
-    else:
-        print("Failed to delete steerable model:", response.text)
+    def generate_completion_with_prompt(self, model_id, prompt, control_settings, settings=None):
+        """Helper function to generate completion."""
+        url = f"{BASE_URL}/completions"
+        payload = {
+            "model": model_id,
+            "prompt": prompt,
+            "control_settings": control_settings,
+            "settings": settings or {}
+        }
+        response = requests.post(url, json=payload)
+        return response
 
-if __name__ == "__main__":
-    model_id = test_create_steerable_model()
-
-    if model_id:
-        test_prompts = [
-            "Can you help me with my homework?",
-            "I disagree with your opinion.",
-            "What's the best way to learn a new language?",
-            "Tell me a joke.",
-            "Explain quantum computing in simple terms."
+    def test_generation_with_control_strength(self):
+        """Test generating completions with different control strengths."""
+        actions = [
+            ("Prompt only", 0),
+            ("Prompt + control", TEST_CONTROL_INCREASE),
+            ("Prompt - control", TEST_CONTROL_DECREASE)
         ]
-        
+
         for prompt in test_prompts:
-            # Test with high materialistic, cold, and selfish traits
-            control_settings = {
-                'materialistic': 2.0,
-                'optimistic': 2.0,
-            }
-            test_generate_completion(model_id, prompt, control_settings)
-            time.sleep(1)  # Add a small delay between requests
-            
-            # Test with low materialistic, cold, and selfish traits
-            control_settings = {
-                'materialistic': -2.0,
-                'optimistic': -2.0,
-            }
-            test_generate_completion(model_id, prompt, control_settings)
-            time.sleep(1)  # Add a small delay between requests
-        
-        test_delete_steerable_model(model_id)
-    else:
-        print("Skipping further tests due to failure in creating steerable model.")
+            for action_name, control_strength in actions:
+                print(f"\n---- {action_name}, control strength: {control_strength} ----\n")
+                # Adjust control settings based on action
+                if control_strength == 0:
+                    control_settings = {}
+                else:
+                    control_settings = {
+                        "materialistic": control_strength,
+                        "optimistic": control_strength
+                    }
+                response = self.generate_completion_with_prompt(
+                    model_id=self.steerable_model_id,
+                    prompt=prompt,
+                    control_settings=control_settings
+                )
+                self.assertEqual(response.status_code, 200)
+                data = response.json()
+                self.assertIn('content', data)
+                # Format and print the response
+                content = data['content'].replace(user_tag, "\nUser: ").replace(asst_tag, "\nAssistant: ").strip()
+                print("Control settings:", control_settings)
+                print(f"Prompt: {prompt}\n")
+                print(f"Generated Response:\n{content}\n")
+                print('-' * 80)
+
+    def test_delete_steerable_model(self):
+        """Test deleting a steerable model."""
+        # Deleting the model using the class variable
+        url = f"{BASE_URL}/steerable-models/{self.steerable_model_id}"
+        response = requests.delete(url)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data.get('deleted'))
+        print(f"Deleted steerable model with ID: {self.steerable_model_id}")
+
+if __name__ == '__main__':
+    unittest.main()
