@@ -1,0 +1,30 @@
+[
+    {
+        "id": "model_3",
+        "name": "sfs",
+        "words": [
+            "steer",
+            "uncool",
+            ""
+        ],
+        "synonyms_antonyms": [
+            "[\n    [\"steer\", \"guide\", \"direct\", \"control\", \"navigate\"],\n    [\"follow\", \"obey\", \"drift\", \"meander\", \"veer\"]\n]",
+            "[\n    [\"uncool\", \"lame\", \"uncouth\", \"unfashionable\", \"unstylish\"],\n    [\"cool\", \"trendy\", \"fashionable\", \"stylish\", \"hip\"]\n]",
+            ""
+        ]
+    },
+    {
+        "id": "model_3",
+        "name": "cool popular ",
+        "words": [
+            "cool",
+            "popular",
+            ""
+        ],
+        "synonyms_antonyms": [
+            "[\n    [\"cool\", \"chilly\", \"icy\", \"frosty\", \"frigid\"],\n    [\"warm\", \"hot\", \"sultry\", \"tropical\", \"scorching\"]\n]",
+            "[\n    [\"popular\", \"well-liked\", \"acclaimed\", \"celebrated\", \"renowned\"],\n    [\"unpopular\", \"obscure\", \"unknown\", \"unrecognized\", \"unpublicized\"]\n]",
+            ""
+        ]
+    }
+]
