@@ -18,6 +18,12 @@ If the trait isn't specified in control_settings, it defaults to 0.0
 
 ### Misc implementation notes 
 
+####Formatting 
+Since this is a completions model, we manually insert user and asst tags to structure the output: 
+```
+DEFAULT_TEMPLATE = "{user_tag} Act as if you're extremely {persona}. {asst_tag}{suffix}"
+```
+
 ####Control Vectors
 Start with a zero vector: starting from zero ensures that if control_settings is empty or if all its weights are zero, then vector_mix will also correctly be set to 0 (ie no influence applied).
 

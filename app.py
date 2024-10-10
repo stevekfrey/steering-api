@@ -75,8 +75,8 @@ def make_contrastive_dataset(
         for i in range(1, len(tokens)):
             truncated_suffix = tokenizer.convert_tokens_to_string(tokens[:i])
             for positive_persona, negative_persona in zip(positive_personas, negative_personas):
-                positive_template = template.format(persona=positive_persona)
-                negative_template = template.format(persona=negative_persona)
+                positive_template = template.format(user_tag=user_tag, asst_tag=asst_tag, persona=positive_persona, suffix=truncated_suffix)
+                negative_template = template.format(user_tag=user_tag, asst_tag=asst_tag, persona=negative_persona, suffix=truncated_suffix)
                 dataset.append(
                     DatasetEntry(
                         positive=f"{user_tag} {positive_template} {asst_tag} {truncated_suffix}",
