@@ -3,6 +3,7 @@ import requests
 import json
 from dotenv import load_dotenv
 import os
+from steer_templates import user_tag, asst_tag
 
 load_dotenv()
 
@@ -13,11 +14,6 @@ if not REMOTE_URL:
 
 CURRENT_URL = REMOTE_URL
 print (f"Using {CURRENT_URL} for testing")
-
-user_tag = "<|start_header_id|>user<|end_header_id|>You: "
-asst_tag = "<|eot_id|><|start_header_id|>assistant<|end_header_id|>Assistant: "
-
-DEFAULT_TEMPLATE = "I am a {persona} person."
 
 # Control strength variables
 TEST_CONTROL_INCREASE = 2
