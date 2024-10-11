@@ -69,6 +69,8 @@ def make_contrastive_dataset(
     # Access the tokenizer from app config
     tokenizer = current_app.config['TOKENIZER']
 
+    app.logger.info(f"Making contrastive dataset with {len(positive_personas)} positive personas, {len(negative_personas)} negative personas, and {len(suffix_list)} suffixes")
+
     dataset = []
     for suffix in suffix_list:
         tokens = tokenizer.tokenize(suffix)
@@ -83,6 +85,8 @@ def make_contrastive_dataset(
                         negative=f"{user_tag} {negative_template} {asst_tag} {truncated_suffix}",
                     )
                 )
+    
+    app.logger.info(f"Created contrastive dataset with {len(dataset)} entries")
     return dataset
 
 # def print_chat(full_string, role="assistant"):
@@ -112,7 +116,12 @@ def create_dataset_and_train_vector(positive_examples, negative_examples, suffix
     model = current_app.config['MODEL']
     tokenizer = current_app.config['TOKENIZER']
 
+    app.logger.info(f"Creating dataset with {len(positive_examples)} positive examples and {len(negative_examples)} negative examples")
     dataset = make_contrastive_dataset(positive_examples, negative_examples, suffix_list, template)
+    app.logger.info(f"Dataset created with {len(dataset)} entries")
+    if len(dataset) == 0:
+        app.logger.error("Dataset is empty. Cannot train control vector.")
+        raise ValueError("Empty dataset")
     model.reset()
     control_vector = ControlVector.train(model, tokenizer, dataset)
     return control_vector
@@ -153,6 +162,10 @@ def create_steerable_model():
         for trait, examples in control_dimensions.items():
             positive_examples = examples.get('positive_examples', [])
             negative_examples = examples.get('negative_examples', [])
+            app.logger.info(f"Processing trait: {trait}")
+            app.logger.info(f"Positive examples: {positive_examples}")
+            app.logger.info(f"Negative examples: {negative_examples}")
+            app.logger.info(f"Suffix list: {suffix_list}")
             control_vectors[trait] = create_dataset_and_train_vector(positive_examples, negative_examples, suffix_list)
 
         # Store the steerable model with its control vectors and control dimensions
@@ -172,7 +185,7 @@ def create_steerable_model():
             'object': 'steerable_model',
             'created_at': steerable_model_with_vectors['created_at'],
             'model': model_name,
-            'control_dimensions': control_dimensions  # Include control_dimensions in the response
+            'control_dimensions': control_dimensions 
         }
 
         app.logger.info('Steerable model created', extra={'model_id': steering_model_full_id})

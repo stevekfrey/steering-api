@@ -1,7 +1,8 @@
 Flask==3.0.3
 modal==0.64.178
-numpy==2.1.2
 repeng==0.3.1
 Requests==2.32.3
 torch==2.4.0
 transformers==4.45.1
+numpy
+json_log_formatter

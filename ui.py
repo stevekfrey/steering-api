@@ -6,6 +6,7 @@ from litellm import completion
 from datetime import datetime  # Added import for timestamp
 from streamlit_test_suite import test_suite_page
 import time
+import steer_api_client  # Importing the API client
 
 # Load environment variables
 load_dotenv()
@@ -75,15 +76,16 @@ def select_model(model_id):
     """
     st.session_state['current_model'] = model_id
 
-def display_saved_models(saved_models):
+def display_saved_models():
     """
     Displays the saved models with SELECT buttons for selection
-    and properly formatted Control Dimensions.
-
-    Args:
-        saved_models (list of dict): A list where each dict contains model details,
-                                     including 'control_dimensions' dictionary.
+    and properly formatted Control Dimensions by fetching from the API.
     """
+    try:
+        saved_models = steer_api_client.list_steerable_models()
+    except Exception as e:
+        st.error(f"Error fetching saved models: {str(e)}")
+        return
 
     if not saved_models:
         st.write("No models saved yet.")
@@ -110,7 +112,7 @@ def display_saved_models(saved_models):
 
         with cols[1]:
             # Expand the expander if the model is selected
-            with st.expander(f"### Model:   **{model['model_name']}**", expanded=is_selected): # Model Name 
+            with st.expander(f"### Model:   **{model['model']}**", expanded=is_selected): # Model Name 
                 control_dimensions = model.get('control_dimensions', {})
 
                 if control_dimensions:
@@ -157,12 +159,12 @@ def steer_model_page():
         st.write("**Control Dimensions**")
         st.write('Click "Generate Examples" to generate a list of positive and negative examples for the control word, or enter your own list, formatted as JSON. ')
 
-    placeholder_words = ["mercenary", "savvy", "sophisticated"]
+    placeholder_words = ["missionary", "savvy", "sophisticated"]
     
     # Create dynamic rows for control dimensions
     for i in range(st.session_state.num_control_dimensions):
-        if f'word_{i}' not in st.session_state:
-            st.session_state[f'word_{i}'] = 'mercenary'
+        # if f'word_{i}' not in st.session_state:
+            # st.session_state[f'word_{i}'] = 'empty'
         if f'control_dimensions_{i}' not in st.session_state:
             default_json = json.dumps({
                 "positive_examples": ["example1", "example2"],
@@ -235,68 +237,48 @@ def steer_model_page():
         if not model_name:
             st.error("Please enter a model name.")
         else:
-            control_dimensions = {}
+            with st.spinner("Waiting for API response"):
+                control_dimensions = {}
 
-            for i in range(st.session_state.num_control_dimensions):
-                control_word = st.session_state.get(f'word_{i}', '').strip()
-                control_input = st.session_state.get(f'control_dimensions_{i}', '').strip()
+                for i in range(st.session_state.num_control_dimensions):
+                    control_word = st.session_state.get(f'word_{i}', '').strip()
+                    control_input = st.session_state.get(f'control_dimensions_{i}', '').strip()
 
-                if control_word and control_input:
+                    if control_word and control_input:
+                        try:
+                            parsed_json = json.loads(control_input)
+                            if not isinstance(parsed_json, dict):
+                                raise ValueError(f"Control dimension '{control_word}' is not a JSON object.")
+                            if "positive_examples" not in parsed_json or "negative_examples" not in parsed_json:
+                                raise ValueError(f"Control dimension '{control_word}' must contain 'positive_examples' and 'negative_examples' keys.")
+                            control_dimensions[control_word] = parsed_json
+                        except json.JSONDecodeError as e:
+                            st.warning(f"Invalid JSON format in control dimension '{control_word}': {str(e)}")
+                        except ValueError as ve:
+                            st.warning(str(ve))
+
+                if control_dimensions:
+                    # Prepare the data payload for the API
+                    api_control_dimensions = {}
+                    for word, examples in control_dimensions.items():
+                        api_control_dimensions[word] = {
+                            "positive_examples": examples.get("positive_examples", []),
+                            "negative_examples": examples.get("negative_examples", [])
+                        }
+
+                    print("API Control Dimensions:", json.dumps(api_control_dimensions, indent=2))
+
                     try:
-                        parsed_json = json.loads(control_input)
-                        if not isinstance(parsed_json, dict):
-                            raise ValueError(f"Control dimension '{control_word}' is not a JSON object.")
-                        if "positive_examples" not in parsed_json or "negative_examples" not in parsed_json:
-                            raise ValueError(f"Control dimension '{control_word}' must contain 'positive_examples' and 'negative_examples' keys.")
-                        control_dimensions[control_word] = parsed_json
-                    except json.JSONDecodeError as e:
-                        st.warning(f"Invalid JSON format in control dimension '{control_word}': {str(e)}")
-                    except ValueError as ve:
-                        st.warning(str(ve))
-
-            if control_dimensions:
-                # Get current timestamp
-                timestamp = int(datetime.now().timestamp())
-                # Generate a unique ID combining timestamp and model name
-                steering_model_full_id = f"{timestamp}_{model_name}"
-
-                # Get current timestamp in ISO format
-                created_at = datetime.now().isoformat()
-
-                control_dimension_words = list(control_dimensions.keys())
-
-                # Create the model dictionary
-                api_response = {
-                    'id': steering_model_full_id,
-                    'model_name': model_name,
-                    'created_at': created_at,
-                    'control_dimensions': control_dimensions,
-                    'control_dimension_words': control_dimension_words
-                }
-
-                # Save the response locally in a JSON file
-                try:
-                    models_data = []
-                    if os.path.exists("models.json"):
-                        with open("models.json", "r") as f:
-                            try:
-                                models_data = json.load(f)
-                            except json.JSONDecodeError:
-                                st.error("Error reading the models.json file. Please ensure it's a valid JSON.")
-                                models_data = []
-
-                    # Append new model
-                    models_data.append(api_response)
-
-                    # Save back to the file
-                    with open("models.json", "w") as f:
-                        json.dump(models_data, f, indent=4)
-
-                    st.success("Model created and saved locally.")
-                except Exception as e:
-                    st.error(f"Failed to save the model: {str(e)}")
-            else:
-                st.warning("No valid control dimensions provided. Model not saved.")
+                        # Call the API to create a steerable model
+                        model_id = steer_api_client.create_steerable_model(
+                            model_label=model_name,
+                            control_dimensions=api_control_dimensions
+                        )
+                        st.success(f"Model created with ID: {model_id}")
+                    except Exception as e:
+                        st.error(f"Failed to create model: {str(e)}")
+                else:
+                    st.warning("No valid control dimensions provided. Model not saved.")
 
     # "Reset Models" Button
     st.markdown("---")  # Separator
@@ -306,22 +288,18 @@ def steer_model_page():
 
     if st.button("Reset Models"):
         try:
-            with open("models.json", "w") as f:
-                json.dump([], f, indent=4)
-            st.success("All models have been reset. 'models.json' is now empty.")
+            # Assuming there's an API endpoint to delete all models or reset
+            # If not, this part needs to be adjusted based on available API endpoints
+            # For now, we'll iterate through and delete each model
+            models = steer_api_client.list_steerable_models()
+            for model in models:
+                steer_api_client.delete_steerable_model(model['id'])
+            st.success("All models have been reset.")
             st.session_state['current_model'] = None  # Clear the current_model selection
         except Exception as e:
             st.error(f"Failed to reset models: {str(e)}")
-    if os.path.exists("models.json"):
-        with open("models.json", "r") as f:
-            try:
-                models_data = json.load(f)
-                if models_data:
-                    display_saved_models(models_data)
-                else:
-                    st.write("No models saved yet.")
-            except json.JSONDecodeError:
-                st.error("Error reading the models.json file. Please ensure it's a valid JSON.")
+    if steer_api_client.list_steerable_models():
+        display_saved_models()
     else:
         st.write("No models saved yet.")
 
@@ -336,16 +314,14 @@ def steer_model_page():
         selected_model_id = st.session_state['current_model']
         st.write(f"**Generating with Model ID:** `{selected_model_id}`")
 
-        # Load the model details from models.json
+        # Load the model details from the API
         try:
-            with open("models.json", "r") as f:
-                models_data = json.load(f)
-                selected_model = next((model for model in models_data if model['id'] == selected_model_id), None)
-                if selected_model is None:
-                    st.error("Selected model not found in saved models.")
-                    return
+            selected_model = steer_api_client.get_steerable_model(selected_model_id)
+            if not selected_model:
+                st.error("Selected model not found in saved models.")
+                return
         except Exception as e:
-            st.error(f"Error loading models: {str(e)}")
+            st.error(f"Error loading model details: {str(e)}")
             return
 
         # Sliders for control dimensions
@@ -404,9 +380,18 @@ def steer_model_page():
             with st.chat_message("user"):
                 st.markdown(prompt)
             
-            # Generate response (replace this with your actual response generation)
-            full_response = f"This is a simulated response based on your input: {prompt}"
-            
+            # Generate response via the API
+            try:
+                full_response = steer_api_client.generate_completion(
+                    model_id=selected_model_id,
+                    prompt=prompt,
+                    control_settings=control_settings,
+                    settings={"max_new_tokens": 256}
+                )
+            except Exception as e:
+                st.error(f"Error generating response: {str(e)}")
+                full_response = "An error occurred while generating the response."
+
             # Display assistant response
             with st.chat_message("assistant"):
                 st.markdown(full_response)
@@ -424,6 +409,15 @@ def steer_model_page():
 
 def main():
     st.set_page_config(page_title="Steerable Models App", layout="wide")
+
+    # Perform health check
+    try:
+        print("Performing health check...")
+        health_status = steer_api_client.health_check()
+        st.success(f"Connected to Remote API: {health_status}")
+    except Exception as e:
+        st.error(f"Failed to connect to Remote API: {str(e)}")
+    
     
     # Create tabs
     tab1, tab2, tab3, tab4 = st.tabs(["Steer Model", "API Documentation", "Research Notebook", "Test Suite"])

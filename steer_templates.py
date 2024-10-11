@@ -1,3 +1,5 @@
+BASE_MODEL_NAME = "aifeifei798/DarkIdol-Llama-3.1-8B-Instruct-1.2-Uncensored"
+
 user_tag = "<|start_header_id|>user<|end_header_id|>You: "
 asst_tag = "<|eot_id|><|start_header_id|>assistant<|end_header_id|>Assistant:"
 
