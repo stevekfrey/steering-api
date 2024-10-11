@@ -106,14 +106,13 @@ def create_vector_with_zeros_like(control_vector):
                        for k, v in control_vector.directions.items()}
     return ControlVector(model_type=control_vector.model_type, directions=zero_directions)
 
-
 # Create dataset and train control vector
-def create_dataset_and_train_vector(synonyms, antonyms, suffix_list, template=DEFAULT_TEMPLATE):
+def create_dataset_and_train_vector(positive_examples, negative_examples, suffix_list, template=DEFAULT_TEMPLATE):
     # Access the model and tokenizer from app config
     model = current_app.config['MODEL']
     tokenizer = current_app.config['TOKENIZER']
 
-    dataset = make_contrastive_dataset(synonyms, antonyms, suffix_list, template)
+    dataset = make_contrastive_dataset(positive_examples, negative_examples, suffix_list, template)
     model.reset()
     control_vector = ControlVector.train(model, tokenizer, dataset)
     return control_vector
@@ -151,16 +150,19 @@ def create_steerable_model():
         model_name = current_app.config['MODEL_NAME']
 
         # Create control vectors for each dimension
-        for trait, (synonyms, antonyms) in control_dimensions.items():
-            control_vectors[trait] = create_dataset_and_train_vector(synonyms, antonyms, suffix_list)
+        for trait, examples in control_dimensions.items():
+            positive_examples = examples.get('positive_examples', [])
+            negative_examples = examples.get('negative_examples', [])
+            control_vectors[trait] = create_dataset_and_train_vector(positive_examples, negative_examples, suffix_list)
 
-        # Store the steerable model with its control vectors
+        # Store the steerable model with its control vectors and control dimensions
         steerable_model_with_vectors = {
             'id': steering_model_full_id,
             'object': 'steerable_model',
             'created_at': datetime.datetime.utcnow().isoformat(),
             'model': model_name,
-            'control_vectors': control_vectors  # Stored internally, not returned to the user
+            'control_vectors': control_vectors,  # Stored internally, not returned to the user
+            'control_dimensions': control_dimensions  # Stored for returning in responses
         }
 
         steerable_models_vector_storage[steering_model_full_id] = steerable_model_with_vectors
@@ -169,7 +171,8 @@ def create_steerable_model():
             'id': steering_model_full_id,
             'object': 'steerable_model',
             'created_at': steerable_model_with_vectors['created_at'],
-            'model': model_name
+            'model': model_name,
+            'control_dimensions': control_dimensions  # Include control_dimensions in the response
         }
 
         app.logger.info('Steerable model created', extra={'model_id': steering_model_full_id})
@@ -190,12 +193,13 @@ def list_steerable_models():
     # Apply pagination
     models_list = models_list[offset:offset+limit]
 
-    # Prepare the response data without control vectors
+    # Prepare the response data without control vectors but including control_dimensions
     data = [{
         'id': model['id'],
         'object': model['object'],
         'created_at': model['created_at'],
         'model': model['model'],
+        'control_dimensions': model.get('control_dimensions', {})
     } for model in models_list]
 
     app.logger.info('Steerable models listed', extra={'limit': limit, 'offset': offset})
@@ -209,12 +213,13 @@ def get_steerable_model(model_id):
         app.logger.warning('Steerable model not found', extra={'model_id': model_id})
         return jsonify({'error': 'Steerable model not found'}), 404
 
-    # Return the model details without control vectors
+    # Return the model details without control vectors but including control_dimensions
     response = {
         'id': model['id'],
         'object': model['object'],
         'created_at': model['created_at'],
         'model': model['model'],
+        'control_dimensions': model.get('control_dimensions', {})
     }
     app.logger.info('Steerable model retrieved', extra={'model_id': model_id})
     return jsonify(response), 200
@@ -292,7 +297,7 @@ def generate_completion():
             # Use the base model (no control vectors)
             app.logger.info(f"No prior model found for name '{model_name_request}'. Using base model for generation")
             model.reset()
-    
+
         # Generation settings
         default_settings = {
             "do_sample": False,
@@ -301,10 +306,10 @@ def generate_completion():
             "pad_token_id": tokenizer.pad_token_id,
         }
         generation_settings = {**default_settings, **generation_settings}
-    
+
         # Log generation settings
         app.logger.debug('Generation settings', extra={'generation_settings': generation_settings})
-    
+
         # Generate the output with attention_mask
         with torch.no_grad():
             output_ids = model.generate(
@@ -316,10 +321,10 @@ def generate_completion():
 
         # Parse and format the generated text
         formatted_response = parse_assistant_response(generated_text)
-    
+
         # Reset the model control after generation
         model.reset()
-    
+
         # Prepare the response
         response = {
             'id': uuid.uuid4().hex,
@@ -328,10 +333,10 @@ def generate_completion():
             'model': model_name_request,
             'content': formatted_response,
         }
-    
+
         app.logger.info('Completion generated', extra={'response_id': response['id']})
         return jsonify(response), 200
-    
+
     except Exception as e:
         app.logger.error('Error in generate_completion', extra={'error': str(e), 'traceback': traceback.format_exc()})
         return jsonify({'error': 'An internal error occurred', 'details': str(e)}), 500

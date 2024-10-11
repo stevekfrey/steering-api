@@ -1,0 +1,293 @@
+[
+    {
+        "id": "1728622944_mercool",
+        "model_name": "mercool",
+        "created_at": "2024-10-10T22:02:24.459816",
+        "control_dimensions": {
+            "mercenary": {
+                "positive_examples": [
+                    "mercenary",
+                    "venal",
+                    "self-interested",
+                    "avaricious",
+                    "greedy"
+                ],
+                "negative_examples": [
+                    "altruistic",
+                    "charitable",
+                    "selfless",
+                    "idealistic",
+                    "philanthropic"
+                ]
+            },
+            "flask": {
+                "positive_examples": [
+                    "vessel",
+                    "container",
+                    "bottle",
+                    "jar",
+                    "receptacle"
+                ],
+                "negative_examples": [
+                    "open",
+                    "exposed",
+                    "uncontained",
+                    "uncovered",
+                    "unplugged"
+                ]
+            },
+            "cool": {
+                "positive_examples": [
+                    "cool",
+                    "chilly",
+                    "cold",
+                    "frigid",
+                    "icy"
+                ],
+                "negative_examples": [
+                    "warm",
+                    "hot",
+                    "sweltering",
+                    "scorching",
+                    "balmy"
+                ]
+            }
+        },
+        "control_dimension_words": [
+            "mercenary",
+            "flask",
+            "cool"
+        ]
+    },
+    {
+        "id": "1728622980_optitron",
+        "model_name": "optitron",
+        "created_at": "2024-10-10T22:03:00.653018",
+        "control_dimensions": {
+            "super dooper alligator": {
+                "positive_examples": [
+                    "enormous",
+                    "gigantic",
+                    "massive",
+                    "towering",
+                    "colossal"
+                ],
+                "negative_examples": [
+                    "tiny",
+                    "miniature",
+                    "diminutive",
+                    "petite",
+                    "minuscule"
+                ]
+            },
+            "bullish": {
+                "positive_examples": [
+                    "bullish",
+                    "optimistic",
+                    "confident",
+                    "enthusiastic",
+                    "aggressive"
+                ],
+                "negative_examples": [
+                    "bearish",
+                    "pessimistic",
+                    "cautious",
+                    "timid",
+                    "passive"
+                ]
+            },
+            "optitron": {
+                "positive_examples": [
+                    "optitron",
+                    "photoreceptor",
+                    "photodetector",
+                    "photodiode",
+                    "phototransistor"
+                ],
+                "negative_examples": [
+                    "nondetector",
+                    "insensitive",
+                    "opaque",
+                    "obstruction",
+                    "impediment"
+                ]
+            }
+        },
+        "control_dimension_words": [
+            "super dooper alligator",
+            "bullish",
+            "optitron"
+        ]
+    },
+    {
+        "id": "1728625015_merc sav flaky super duper extraodinary ",
+        "model_name": "merc sav flaky super duper extraodinary ",
+        "created_at": "2024-10-10T22:36:55.958623",
+        "control_dimensions": {
+            "mercenary": {
+                "positive_examples": [
+                    "mercenary",
+                    "venal",
+                    "self-interested",
+                    "avaricious",
+                    "self-serving"
+                ],
+                "negative_examples": [
+                    "selfless",
+                    "altruistic",
+                    "idealistic",
+                    "principled",
+                    "philanthropic"
+                ]
+            },
+            "savvy": {
+                "positive_examples": [
+                    "skilled",
+                    "adept",
+                    "proficient",
+                    "clever",
+                    "knowledgeable"
+                ],
+                "negative_examples": [
+                    "unskilled",
+                    "incompetent",
+                    "ignorant",
+                    "inept",
+                    "novice"
+                ]
+            },
+            "flaky": {
+                "positive_examples": [
+                    "crumbly",
+                    "brittle",
+                    "crisp",
+                    "fragile",
+                    "delicate"
+                ],
+                "negative_examples": [
+                    "sturdy",
+                    "solid",
+                    "durable",
+                    "tough",
+                    "resilient"
+                ]
+            },
+            "super duper": {
+                "positive_examples": [
+                    "extraordinary",
+                    "exceptional",
+                    "outstanding",
+                    "supreme",
+                    "unparalleled"
+                ],
+                "negative_examples": [
+                    "ordinary",
+                    "average",
+                    "mediocre",
+                    "subpar",
+                    "inferior"
+                ]
+            },
+            "extraordinary": {
+                "positive_examples": [
+                    "exceptional",
+                    "remarkable",
+                    "phenomenal",
+                    "extraordinary",
+                    "uncommon"
+                ],
+                "negative_examples": [
+                    "ordinary",
+                    "common",
+                    "typical",
+                    "unremarkable",
+                    "mediocre"
+                ]
+            }
+        },
+        "control_dimension_words": [
+            "mercenary",
+            "savvy",
+            "flaky",
+            "super duper",
+            "extraordinary"
+        ]
+    },
+    {
+        "id": "1728626296_supacool",
+        "model_name": "supacool",
+        "created_at": "2024-10-10T22:58:16.719531",
+        "control_dimensions": {
+            "mercenary": {
+                "positive_examples": [
+                    "mercenary",
+                    "venal",
+                    "avaricious",
+                    "self-serving",
+                    "grasping"
+                ],
+                "negative_examples": [
+                    "idealistic",
+                    "altruistic",
+                    "selfless",
+                    "principled",
+                    "devoted"
+                ]
+            },
+            "savvy": {
+                "positive_examples": [
+                    "savvy",
+                    "skilled",
+                    "shrewd",
+                    "canny",
+                    "adept"
+                ],
+                "negative_examples": [
+                    "unskilled",
+                    "inept",
+                    "inexperienced",
+                    "naive",
+                    "unsophisticated"
+                ]
+            },
+            "sophisticated": {
+                "positive_examples": [
+                    "sophisticated",
+                    "refined",
+                    "cultivated",
+                    "polished",
+                    "urbane"
+                ],
+                "negative_examples": [
+                    "unsophisticated",
+                    "crude",
+                    "simplistic",
+                    "basic",
+                    "unrefined"
+                ]
+            },
+            "supacool": {
+                "positive_examples": [
+                    "awesome",
+                    "amazing",
+                    "cool",
+                    "excellent",
+                    "fantastic"
+                ],
+                "negative_examples": [
+                    "uncool",
+                    "lame",
+                    "mediocre",
+                    "boring",
+                    "unimpressive"
+                ]
+            }
+        },
+        "control_dimension_words": [
+            "mercenary",
+            "savvy",
+            "sophisticated",
+            "supacool"
+        ]
+    }
+]
