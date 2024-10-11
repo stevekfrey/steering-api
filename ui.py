@@ -4,22 +4,23 @@ import json
 import os
 from dotenv import load_dotenv
 from litellm import completion
+from datetime import datetime  # Added import for timestamp
 
 # Load environment variables
 load_dotenv()
 
-def generate_synonyms_antonyms(word):
-    prompt = f"""Here is a word, please create an ordered list of 5 SYNONYMs (similar to the word) and then 5 ANTONYMS (the opposite of the word). Respond ONLY with a list of lists, starting with the '[' and ending with the ']'. Respond with the following format:
+def generate_positive_negative_examples(word):
+    prompt = f"""Here is a word, please create an ordered list of 5 SYNONYMS (similar to the word) and then 5 ANTONYMS (the opposite of the word). Respond ONLY with a JSON object containing two keys: "positive_examples" and "negative_examples". Each key should map to a list of 5 examples. Respond with the following format:
 
 =====
 EXAMPLE INPUT:
 materialistic
 
 EXAMPLE RESPONSE:
-[
-    ["materialistic", "consumerist", "acquisitive", "wealthy", "greedy"],
-    ["minimalist", "austere", "spiritual", "altruistic", "ascetic"]
-]
+{{
+    "positive_examples": ["materialistic", "consumerist", "acquisitive", "wealthy", "greedy"],
+    "negative_examples": ["minimalist", "austere", "spiritual", "altruistic", "ascetic"]
+}}
 =====
 INPUT:
 {word}
@@ -33,61 +34,60 @@ RESPONSE:
             messages=[{"role": "user", "content": prompt}],
             api_key=os.getenv("ANTHROPIC_API_KEY")
         )
-        return response.choices[0].message.content
+        return json.loads(response.choices[0].message.content)
     except Exception as e:
-        st.error(f"Error generating synonyms and antonyms: {str(e)}")
+        st.error(f"Error generating positive and negative examples: {str(e)}")
         return None
 
-
-
-def parse_syn_ant(syn_ant_str):
+def parse_control_dimensions(control_dimensions_dict):
     """
-    Parses a string containing synonyms and antonyms separated by newline characters.
+    Parses a dictionary containing control dimensions.
 
     Args:
-        syn_ant_str (str): The string containing synonyms and antonyms.
+        control_dimensions_dict (dict): The dictionary containing control dimensions.
 
     Returns:
-        tuple: A tuple containing two strings: synonyms and antonyms.
+        tuple: A tuple containing two lists: positive_examples and negative_examples.
     """
-    synonyms = ""
-    antonyms = ""
+    positive_examples = []
+    negative_examples = []
 
-    lines = syn_ant_str.strip().split('\n')
-    for line in lines:
-        if line.lower().startswith('synonyms:'):
-            synonyms = line.replace('synonyms:', '').strip()
-        elif line.lower().startswith('antonyms:'):
-            antonyms = line.replace('antonyms:', '').strip()
+    for key, value in control_dimensions_dict.items():
+        if isinstance(value, dict):
+            pos = value.get('positive_examples', [])
+            neg = value.get('negative_examples', [])
+            positive_examples.extend(pos)
+            negative_examples.extend(neg)
 
-    return synonyms, antonyms
-
+    return positive_examples, negative_examples
 
 def display_saved_models(saved_models):
     """
-    Displays the saved models with properly formatted Synonyms and Antonyms.
+    Displays the saved models with properly formatted Control Dimensions.
 
     Args:
         saved_models (list of dict): A list where each dict contains model details,
-                                    including a 'syn_ant' string with synonyms and antonyms separated by newline characters.
+                                     including 'control_dimensions' dictionary.
     """
     st.header("Saved Models")
 
     for model in saved_models:
-        with st.expander(model['name']):
-            syn_ant_str = model.get('syn_ant', '')
-            synonyms, antonyms = parse_syn_ant(syn_ant_str)
+        with st.expander(f"Model Name: {model['id']}"):
+            # st.markdown(f"**Created At:** {model['created_at']}")
+
+            control_dimensions_dict = model.get('control_dimensions', {})
+            positive_examples, negative_examples = parse_control_dimensions(control_dimensions_dict)
             
-            if synonyms:
-                st.markdown(f"**Synonyms:** {synonyms}")
+            if positive_examples:
+                st.markdown(f"**Positive Examples:** {', '.join(positive_examples)}")
             else:
-                st.markdown("**Synonyms:** _None provided_")
+                st.markdown("**Positive Examples:** _None provided_")
             
-            if antonyms:
-                st.markdown(f"**Antonyms:** {antonyms}")
+            if negative_examples:
+                st.markdown(f"**Negative Examples:** {', '.join(negative_examples)}")
             else:
-                st.markdown("**Antonyms:** _None provided_")
-                
+                st.markdown("**Negative Examples:** _None provided_")
+
 def steer_model_page():
     st.title("Steer Model")
 
@@ -96,50 +96,65 @@ def steer_model_page():
     # Initialize session state for text inputs and text areas
     for i in range(3):
         if f'word_{i}' not in st.session_state:
-            st.session_state[f'word_{i}'] = ''
-        if f'syn_ant_{i}' not in st.session_state:
-            st.session_state[f'syn_ant_{i}'] = ''
+            st.session_state[f'word_{i}'] = 'mercenary'
+        if f'control_dimensions_{i}' not in st.session_state:
+            # Initialize with a compact default JSON string
+            default_json = json.dumps({
+                "positive_examples": ["example1", "example2"],
+                "negative_examples": ["example3", "example4"]
+            })
+            st.session_state[f'control_dimensions_{i}'] = default_json
 
     # Create column headers
     header_cols = st.columns([1, 1, 2])
     with header_cols[0]:
         st.write("**Control Word**")
         st.write("The type of behavior you want to steer.")
-    # with header_cols[1]:
-        # st.write("**Generate Examples**")
     with header_cols[2]:
-        st.write("**Synonyms/Antonyms**")
-        st.write("Click 'Generate Examples' to generate a list of synonyms and antonyms for the control word, or enter your own list.")
+        st.write("**Control Dimensions**")
+        st.write('Click "Generate Examples" to generate a list of positive and negative examples for the control word, or enter your own list.')
 
-    # Create 3 rows with text input, generate button, and synonyms/antonyms text area
+    # Create 3 rows with text input, generate button, and control dimensions text area
     for i in range(3):
         row_cols = st.columns([1, 1, 2])
         with row_cols[0]:
             st.text_input(
                 label=f"control_word_{i}",
                 key=f"word_{i}",
+                placeholder="",
                 label_visibility='collapsed'
             )
         with row_cols[1]:
             # Use a unique button key for each button
             if st.button("Generate examples", key=f"generate_btn_{i}"):
                 if st.session_state[f'word_{i}']:
-                    result = generate_synonyms_antonyms(st.session_state[f'word_{i}'])
+                    result = generate_positive_negative_examples(st.session_state[f'word_{i}'])
                     if result:
-                        st.session_state[f'syn_ant_{i}'] = result
+                        try:
+                            # Ensure the result is a compact JSON string
+                            if isinstance(result, dict):
+                                result = json.dumps(result)
+                            st.session_state[f'control_dimensions_{i}'] = result
+                            st.success(f"Examples generated for control word {i+1}.")
+                        except (TypeError, json.JSONDecodeError) as e:
+                            st.error(f"Failed to parse generated examples: {str(e)}")
         with row_cols[2]:
             placeholder_text = (
-                'Enter a list of synonyms and antonyms like below, or click "generate"\n'
-                '[synonyms: "", "", "", "", "", antonyms: "", "", "", "", ""]'
+                '{'
+                '"positive_examples": ["example1", "example2"], '
+                '"negative_examples": ["example3", "example4"]'
+                '}'
             )
-            st.text_area(
+            user_input = st.text_area(
                 label=f"word_examples_{i}",
                 placeholder=placeholder_text,
-                key=f"syn_ant_{i}",
+                key=f"control_dimensions_text_{i}",
                 height=200,
-                label_visibility='collapsed'
-                # Removed the `value` parameter
+                label_visibility='collapsed',
+                value=st.session_state[f'control_dimensions_{i}']
             )
+            # Update the session state with the user's input (as a string)
+            st.session_state[f'control_dimensions_{i}'] = user_input
 
     # Text box to input the model name
     model_name = st.text_input("Name this model", key="model_name")
@@ -149,32 +164,62 @@ def steer_model_page():
         if not model_name:
             st.error("Please enter a model name.")
         else:
-            # Placeholder for API call (to be implemented later)
-            st.write("Model creation functionality will be implemented here.")
+            control_dimensions = {}
+            parsing_errors = False
 
-            # Simulate an API response
-            api_response = {
-                "id": f"model_{len([k for k in st.session_state.keys() if 'word_' in k])}",
-                "name": model_name,
-                "words": [st.session_state[f'word_{i}'] for i in range(3)],
-                "synonyms_antonyms": [st.session_state[f'syn_ant_{i}'] for i in range(3)]
-            }
+            for i in range(3):
+                control_input = st.session_state.get(f'control_dimensions_{i}', '')
+                try:
+                    parsed_json = json.loads(control_input)
+                    # Validate the JSON structure
+                    if not isinstance(parsed_json, dict):
+                        raise ValueError(f"Control dimension {i+1} is not a JSON object.")
+                    if "positive_examples" not in parsed_json or "negative_examples" not in parsed_json:
+                        raise ValueError(f"Control dimension {i+1} must contain 'positive_examples' and 'negative_examples' keys.")
+                    control_dimensions[f'control_dimension_{i}'] = parsed_json
+                except json.JSONDecodeError as e:
+                    st.error(f"Invalid JSON format in control dimension {i+1}: {str(e)}")
+                    parsing_errors = True
+                except ValueError as ve:
+                    st.error(str(ve))
+                    parsing_errors = True
 
-            # Save the response locally in a JSON file
-            # Load existing data
-            models_data = []
-            if os.path.exists("models.json"):
-                with open("models.json", "r") as f:
-                    models_data = json.load(f)
+            if not parsing_errors:
+                # Generate a unique ID for the model
+                steering_model_full_id = f"model_{int(datetime.now().timestamp())}"
 
-            # Append new model
-            models_data.append(api_response)
+                # Get current timestamp
+                created_at = datetime.now().isoformat()
 
-            # Save back to the file
-            with open("models.json", "w") as f:
-                json.dump(models_data, f, indent=4)
+                # Create the model dictionary
+                api_response = {
+                    'id': model_name,
+                    'created_at': created_at,
+                    # 'model': model_name,
+                    'control_dimensions': control_dimensions 
+                }
 
-            st.success("Model created and saved locally.")
+                # Save the response locally in a JSON file
+                try:
+                    models_data = []
+                    if os.path.exists("models.json"):
+                        with open("models.json", "r") as f:
+                            try:
+                                models_data = json.load(f)
+                            except json.JSONDecodeError:
+                                st.error("Error reading the models.json file. Please ensure it's a valid JSON.")
+                                models_data = []
+
+                    # Append new model
+                    models_data.append(api_response)
+
+                    # Save back to the file
+                    with open("models.json", "w") as f:
+                        json.dump(models_data, f, indent=4)
+
+                    st.success("Model created and saved locally.")
+                except Exception as e:
+                    st.error(f"Failed to save the model: {str(e)}")
 
     # Display saved models
     st.subheader("Saved Models")
@@ -190,26 +235,6 @@ def steer_model_page():
                 st.error("Error reading the models.json file. Please ensure it's a valid JSON.")
     else:
         st.write("No models saved yet.")
-
-
-    
-        # Sample data
-    saved_models = [
-        {
-            'name': 'Model A',
-            'syn_ant': 'synonyms: happy, joyful, elated\nantonyms: sad, miserable, gloomy'
-        },
-        {
-            'name': 'Model B',
-            'syn_ant': 'synonyms: quick, swift, rapid\nantonyms: slow, sluggish, lethargic'
-        },
-        {
-            'name': 'Model C',
-            'syn_ant': 'synonyms: bright, luminous\nantonyms: dim, dark'
-        }
-    ]
-
-    display_saved_models(saved_models)
 
 def main():
     st.set_page_config(page_title="Steerable Models App")
