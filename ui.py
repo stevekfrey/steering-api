@@ -55,7 +55,7 @@ def parse_control_dimensions(control_dimensions_dict):
     positive_examples = []
     negative_examples = []
 
-    for key, value in control_dimensions_dict.items():
+    for word, value in control_dimensions_dict.items():
         if isinstance(value, dict):
             pos = value.get('positive_examples', [])
             neg = value.get('negative_examples', [])
@@ -75,7 +75,8 @@ def select_model(model_id):
 
 def display_saved_models(saved_models):
     """
-    Displays the saved models with SELECT buttons for selection and properly formatted Control Dimensions.
+    Displays the saved models with SELECT buttons for selection
+    and properly formatted Control Dimensions.
 
     Args:
         saved_models (list of dict): A list where each dict contains model details,
@@ -107,20 +108,29 @@ def display_saved_models(saved_models):
 
         with cols[1]:
             # Expand the expander if the model is selected
-            with st.expander(f"### **Model Name: {model['model_name']}**", expanded=is_selected):
-                control_dimensions_dict = model.get('control_dimensions', {})
-                positive_examples, negative_examples = parse_control_dimensions(control_dimensions_dict)
-                
-                if positive_examples:
-                    st.markdown(f"**Positive Examples:** {', '.join(positive_examples)}")
+            with st.expander(f"### Model:   **{model['model_name']}**", expanded=is_selected): # Model Name 
+                control_dimensions = model.get('control_dimensions', {})
+
+                if control_dimensions:
+                    for word, examples in control_dimensions.items():
+                        st.markdown(f"**{word}**")
+
+                        positive_examples = examples.get('positive_examples', [])
+                        negative_examples = examples.get('negative_examples', [])
+
+                        if positive_examples:
+                            st.markdown(f"**(+):** {', '.join(positive_examples)}")
+                        else:
+                            st.markdown("**(+):** _None provided_")
+
+                        if negative_examples:
+                            st.markdown(f"**(-):** {', '.join(negative_examples)}")
+                        else:
+                            st.markdown("**(-):** _None provided_")
+                        st.markdown("---")  # Separator between control words
                 else:
-                    st.markdown("**Positive Examples:** _None provided_")
-                
-                if negative_examples:
-                    st.markdown(f"**Negative Examples:** {', '.join(negative_examples)}")
-                else:
-                    st.markdown("**Negative Examples:** _None provided_")
-                
+                    st.markdown("**No control dimensions provided for this model.**")
+
                 # Highlight if this model is currently selected
                 if is_selected:
                     st.success("**This model is currently selected.**")
@@ -128,19 +138,13 @@ def display_saved_models(saved_models):
 def steer_model_page():
     st.title("Steer Model")
 
+    st.markdown("---")
+
     st.header("Create Steerable Model")
 
-    # Initialize session state for text inputs and text areas
-    for i in range(3):
-        if f'word_{i}' not in st.session_state:
-            st.session_state[f'word_{i}'] = 'mercenary'
-        if f'control_dimensions_{i}' not in st.session_state:
-            # Initialize with a compact default JSON string
-            default_json = json.dumps({
-                "positive_examples": ["example1", "example2"],
-                "negative_examples": ["example3", "example4"]
-            })
-            st.session_state[f'control_dimensions_{i}'] = default_json
+    # Initialize session state for dynamic control dimensions
+    if 'num_control_dimensions' not in st.session_state:
+        st.session_state.num_control_dimensions = 3
 
     # Create column headers
     header_cols = st.columns([1, 1, 2])
@@ -149,26 +153,39 @@ def steer_model_page():
         st.write("The type of behavior you want to steer.")
     with header_cols[2]:
         st.write("**Control Dimensions**")
-        st.write('Click "Generate Examples" to generate a list of positive and negative examples for the control word, or enter your own list.')
+        st.write('Click "Generate Examples" to generate a list of positive and negative examples for the control word, or enter your own list, formatted as JSON. ')
 
-    # Create 3 rows with text input, generate button, and control dimensions text area
-    for i in range(3):
+    placeholder_words = ["mercenary", "savvy", "sophisticated"]
+    
+    # Create dynamic rows for control dimensions
+    for i in range(st.session_state.num_control_dimensions):
+        if f'word_{i}' not in st.session_state:
+            st.session_state[f'word_{i}'] = 'mercenary'
+        if f'control_dimensions_{i}' not in st.session_state:
+            default_json = json.dumps({
+                "positive_examples": ["example1", "example2"],
+                "negative_examples": ["example3", "example4"]
+            })
+            st.session_state[f'control_dimensions_{i}'] = default_json
+
         row_cols = st.columns([1, 1, 2])
         with row_cols[0]:
+            if i < len(placeholder_words):
+                placeholder_word = placeholder_words[i]
+            else:
+                placeholder_word = ""
             st.text_input(
-                label=f"control_word_{i}",
+                label=f"Control Word {i+1}",
                 key=f"word_{i}",
-                placeholder="",
-                label_visibility='collapsed'
+                value=placeholder_word,
+                label_visibility="collapsed"
             )
         with row_cols[1]:
-            # Use a unique button key for each button
             if st.button("Generate examples", key=f"generate_btn_{i}"):
                 if st.session_state[f'word_{i}']:
                     result = generate_positive_negative_examples(st.session_state[f'word_{i}'])
                     if result:
                         try:
-                            # Ensure the result is a compact JSON string
                             if isinstance(result, dict):
                                 result = json.dumps(result)
                             st.session_state[f'control_dimensions_{i}'] = result
@@ -182,19 +199,34 @@ def steer_model_page():
                 '"negative_examples": ["example3", "example4"]'
                 '}'
             )
-            user_input = st.text_area(
-                label=f"word_examples_{i}",
+            st.text_area(
+                label=f"Control Dimensions {i+1}",
                 placeholder=placeholder_text,
                 key=f"control_dimensions_text_{i}",
                 height=200,
-                label_visibility='collapsed',
+                label_visibility="collapsed",
                 value=st.session_state[f'control_dimensions_{i}']
             )
-            # Update the session state with the user's input (as a string)
-            st.session_state[f'control_dimensions_{i}'] = user_input
+
+    # Button to add new control dimension
+    col1, col2, col3 = st.columns([1, 1, 2])
+    with col1:
+        if st.button("➕ Add Word"):
+            if 'num_control_dimensions' not in st.session_state:
+                st.session_state.num_control_dimensions = 3  # Default value
+            st.session_state.num_control_dimensions += 1
+            st.rerun()
+    with col2:
+        if st.button("➖ Remove Word"):
+            if 'num_control_dimensions' not in st.session_state:
+                st.session_state.num_control_dimensions = 3  # Default value
+            if st.session_state.num_control_dimensions > 1:  # Prevent removing all words
+                st.session_state.num_control_dimensions -= 1
+                st.rerun()
 
     # Text box to input the model name
-    model_name = st.text_input("Name this model", key="model_name")
+    st.markdown("#### Name this model")
+    model_name = st.text_input("", key="model_name", label_visibility='hidden' )
 
     # "Create Model" button
     if st.button("Create Model"):
@@ -202,26 +234,23 @@ def steer_model_page():
             st.error("Please enter a model name.")
         else:
             control_dimensions = {}
-            # Removed parsing_errors flag
 
-            for i in range(3):
+            for i in range(st.session_state.num_control_dimensions):
+                control_word = st.session_state.get(f'word_{i}', '').strip()
                 control_input = st.session_state.get(f'control_dimensions_{i}', '').strip()
-                if not control_input:
-                    continue  # Skip if empty
-                try:
-                    parsed_json = json.loads(control_input)
-                    # Validate the JSON structure
-                    if not isinstance(parsed_json, dict):
-                        raise ValueError(f"Control dimension {i+1} is not a JSON object.")
-                    if "positive_examples" not in parsed_json or "negative_examples" not in parsed_json:
-                        raise ValueError(f"Control dimension {i+1} must contain 'positive_examples' and 'negative_examples' keys.")
-                    control_dimensions[f'control_dimension_{i}'] = parsed_json
-                except json.JSONDecodeError as e:
-                    st.warning(f"Invalid JSON format in control dimension {i+1}: {str(e)}")
-                    # Skip invalid entries
-                except ValueError as ve:
-                    st.warning(str(ve))
-                    # Skip invalid entries
+
+                if control_word and control_input:
+                    try:
+                        parsed_json = json.loads(control_input)
+                        if not isinstance(parsed_json, dict):
+                            raise ValueError(f"Control dimension '{control_word}' is not a JSON object.")
+                        if "positive_examples" not in parsed_json or "negative_examples" not in parsed_json:
+                            raise ValueError(f"Control dimension '{control_word}' must contain 'positive_examples' and 'negative_examples' keys.")
+                        control_dimensions[control_word] = parsed_json
+                    except json.JSONDecodeError as e:
+                        st.warning(f"Invalid JSON format in control dimension '{control_word}': {str(e)}")
+                    except ValueError as ve:
+                        st.warning(str(ve))
 
             if control_dimensions:
                 # Get current timestamp
@@ -232,12 +261,15 @@ def steer_model_page():
                 # Get current timestamp in ISO format
                 created_at = datetime.now().isoformat()
 
+                control_dimension_words = list(control_dimensions.keys())
+
                 # Create the model dictionary
                 api_response = {
                     'id': steering_model_full_id,
                     'model_name': model_name,
                     'created_at': created_at,
-                    'control_dimensions': control_dimensions 
+                    'control_dimensions': control_dimensions,
+                    'control_dimension_words': control_dimension_words
                 }
 
                 # Save the response locally in a JSON file
@@ -291,9 +323,154 @@ def steer_model_page():
     else:
         st.write("No models saved yet.")
 
+    # Third section: Generate
+    st.markdown("---")
+    st.markdown("### Generate")
+
+    if st.session_state.get('current_model') is None:
+        st.warning("Please select a model from the 'Saved Models' section above.")
+    else:
+        # Display the selected model ID
+        selected_model_id = st.session_state['current_model']
+        st.write(f"**Generating with Model ID:** `{selected_model_id}`")
+
+        # Load the model details from models.json
+        try:
+            with open("models.json", "r") as f:
+                models_data = json.load(f)
+                # Find the selected model
+                selected_model = next((model for model in models_data if model['id'] == selected_model_id), None)
+                if selected_model is None:
+                    st.error("Selected model not found in saved models.")
+                    return
+        except Exception as e:
+            st.error(f"Error loading models: {str(e)}")
+            return
+
+        # Text box for user_prompt
+        user_prompt = st.text_input("Enter your prompt:", value="How do you think about the universe?", key="user_prompt")
+
+        # Sliders for control dimensions
+        control_settings = {}
+        control_dimensions = selected_model.get('control_dimensions', {})
+
+        if control_dimensions:
+            st.markdown("#### Adjust Control Dimensions")
+            for word in control_dimensions.keys():
+                slider_label = f"{word}"
+                control_value = st.slider(
+                    label=slider_label,
+                    min_value=-10,
+                    max_value=10,
+                    value=0,
+                    key=f"slider_{word}"
+                )
+                control_settings[word] = control_value
+        else:
+            st.info("This model has no control dimensions.")
+
+        # Button to generate
+        if st.button("Generate Response"):
+            if not user_prompt:
+                st.error("Please enter a prompt.")
+            else:
+                # Prepare the API request
+                MODEL_SERVER_URL = "https://example.com/api"  # Replace with actual URL
+
+                payload = {
+                    "model": selected_model_id,
+                    "prompt": user_prompt,
+                    "control_settings": control_settings,
+                    # Include any other necessary fields
+                }
+
+                # Display the payload being sent
+                st.markdown("**API Request Payload:**")
+                st.json(payload)
+
+                # Make the API request - for now, we can simulate this
+                try:
+                    # Simulated response
+                    result = {"content": "This is a sample response based on your input and control settings. It would be much longer in a real scenario, potentially including multiple paragraphs or even pages of generated text, depending on the complexity of the prompt and the capabilities of the model."}
+
+                    # Save to session state
+                    st.session_state['model_response'] = result.get("content", "No content received from the model.")
+                except Exception as e:
+                    st.error(f"Error making API request: {str(e)}")
+                    st.session_state['model_response'] = f"Error: {str(e)}"
+
+        # Large text box for response
+        st.markdown("**Generated Response:**")
+        st.text_area(
+            label="Model Response",
+            value=st.session_state.get('model_response', "No response generated yet. Click 'Generate Response' to get a response."),
+            height=300,
+            key="model_response_display"
+        )
+
+    # New section: Testing Arena
+    st.markdown("---")
+    st.markdown("### Testing Arena")
+
+
+    # List of prompts
+    default_prompts = """Write a story about a brave knight.
+
+Describe a futuristic city.
+
+Explain the process of photosynthesis.
+
+Write a recipe for chocolate chip cookies.
+
+Discuss the impact of social media on society."""
+
+    test_prompts = st.text_area("List of Test Prompts (separated by double-lines)", value=default_prompts, height=200, key="test_prompts")
+
+    # Testing prompt
+    if 'control_dimensions' in selected_model:
+        default_testing_prompt = f"Please act like this: {json.dumps(selected_model['control_dimensions'])}"
+    else:
+        default_testing_prompt = "Please act according to the following instructions:"
+
+    testing_prompt = st.text_area("Testing Prompt", value=default_testing_prompt, height=100, key="testing_prompt")
+
+    # Process and display results for each test prompt
+    prompts = [p.strip() for p in test_prompts.split('\n\n') if p.strip()]
+
+    st.markdown("---")
+    st.markdown(f"\n#### Responses:")
+    for prompt in prompts:
+        st.markdown(f"**{prompt}**")
+
+        col1, col2, col3, col4= st.columns(4)
+
+        with col1:
+            st.markdown("Standard")
+            response = "Sample response for prompt only."  # Replace with actual API call
+            st.text_area("Response", value=response, height=150, key=f"standard_response_{prompt[:20]}")
+
+        with col2:
+            st.markdown("With Prompt")
+            response = "Sample response with positive control vectors."  # Replace with actual API call
+            st.text_area("Response", value=response, height=150, key=f"prompt_response_{prompt[:20]}")
+
+        with col3:
+            st.markdown("(+) Control Vectors")
+            response = "Sample response with negative control vectors."  # Replace with actual API call
+            st.text_area("Response", value=response, height=150, key=f"response_positive_{prompt[:20]}")
+
+        with col4:
+            st.markdown("(-) Vectors (Inverted)")
+            response = "Sample response with negative control vectors."  # Replace with actual API call
+            st.text_area("Response", value=response, height=150, key=f"response_negative_{prompt[:20]}")
+
+        st.markdown("---")
+
 def main():
-    st.set_page_config(page_title="Steerable Models App")
+    st.set_page_config(page_title="Steerable Models App", layout="wide")
     steer_model_page()
 
 if __name__ == "__main__":
     main()
+
+    # TODO: add something to check the list from the API to ensure the model is valid before calling it. update the list with 'model is valid' beforehand 
