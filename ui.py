@@ -4,6 +4,8 @@ import os
 from dotenv import load_dotenv
 from litellm import completion
 from datetime import datetime  # Added import for timestamp
+from streamlit_test_suite import test_suite_page
+import time
 
 # Load environment variables
 load_dotenv()
@@ -338,7 +340,6 @@ def steer_model_page():
         try:
             with open("models.json", "r") as f:
                 models_data = json.load(f)
-                # Find the selected model
                 selected_model = next((model for model in models_data if model['id'] == selected_model_id), None)
                 if selected_model is None:
                     st.error("Selected model not found in saved models.")
@@ -356,145 +357,88 @@ def steer_model_page():
             for word in control_dimensions.keys():
                 col1, col2 = st.columns([1, 5])
                 
-                # Number input
                 with col1:
                     number_value = st.number_input(
                         label=f"{word}",
                         min_value=-10,
                         max_value=10,
-                        value=0,
+                        value=st.session_state.get(f"value_{word}", 0),
                         step=1,
                         key=f"number_{word}"
                     )
                 
-                # Slider
                 with col2:
                     slider_value = st.slider(
                         label=f"",
                         min_value=-10,
                         max_value=10,
-                        value=int(number_value),
+                        value=st.session_state.get(f"value_{word}", 0),
                         key=f"slider_{word}"
                     )
                 
-                # Synchronize number input and slider
-                if slider_value != number_value:
-                    st.session_state[f"number_{word}"] = slider_value
+                # Update the shared value in session state
+                if slider_value != st.session_state.get(f"value_{word}"):
+                    st.session_state[f"value_{word}"] = slider_value
+                elif number_value != st.session_state.get(f"value_{word}"):
+                    st.session_state[f"value_{word}"] = number_value
                 
-                control_settings[word] = slider_value
+                control_settings[word] = st.session_state[f"value_{word}"]
         else:
             st.info("This model has no control dimensions.")
 
-        # Text box for user_prompt
-        user_prompt = st.text_input("Enter your prompt:", value="How do you think about the universe?", key="user_prompt")
+        # Initialize chat history
+        if 'chat_history' not in st.session_state:
+            st.session_state.chat_history = []
 
-        # Button to generate
-        if st.button("Generate Response"):
-            if not user_prompt:
-                st.error("Please enter a prompt.")
-            else:
-                # Prepare the API request
-                MODEL_SERVER_URL = "https://example.com/api"  # Replace with actual URL
+        # Display chat history
+        for message in st.session_state.chat_history:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
 
-                payload = {
-                    "model": selected_model_id,
-                    "prompt": user_prompt,
-                    "control_settings": control_settings,
-                    # Include any other necessary fields
-                }
+        # Chat input
+        if prompt := st.chat_input("Enter your message..."):
+            # Add user message to chat history
+            st.session_state.chat_history.append({"role": "user", "content": prompt})
+            
+            # Display user message
+            with st.chat_message("user"):
+                st.markdown(prompt)
+            
+            # Generate response (replace this with your actual response generation)
+            full_response = f"This is a simulated response based on your input: {prompt}"
+            
+            # Display assistant response
+            with st.chat_message("assistant"):
+                st.markdown(full_response)
+            
+            # Add assistant response to chat history
+            st.session_state.chat_history.append({"role": "assistant", "content": full_response})
+            
+            # Rerun the app to update the chat display
+            st.rerun()
 
-                # Display the payload being sent
-                st.markdown("**API Request Payload:**")
-                st.json(payload)
-
-                # Make the API request - for now, we can simulate this
-                try:
-                    # Simulated response
-                    result = {"content": "This is a sample response based on your input and control settings. It would be much longer in a real scenario, potentially including multiple paragraphs or even pages of generated text, depending on the complexity of the prompt and the capabilities of the model."}
-
-                    # Save to session state
-                    st.session_state['model_response'] = result.get("content", "No content received from the model.")
-                except Exception as e:
-                    st.error(f"Error making API request: {str(e)}")
-                    st.session_state['model_response'] = f"Error: {str(e)}"
-
-        # Large text box for response
-        st.markdown("#### **Response:**")
-        st.text_area(
-            label="Model Response",
-            value=st.session_state.get('model_response', "No response generated yet. Click 'Generate Response' to get a response."),
-            height=300,
-            key="model_response_display"
-        )
-
-    # New section: Testing Arena
-    st.markdown("---")
-    st.markdown("### Testing Arena")
-
-
-    # List of prompts
-    default_prompts = """Write a story about a brave knight.
-
-Describe a futuristic city.
-
-Explain the process of photosynthesis.
-
-Write a recipe for chocolate chip cookies.
-
-Discuss the impact of social media on society."""
-
-    test_prompts = st.text_area("List of Test Prompts (separated by double-lines)", value=default_prompts, height=200, key="test_prompts")
-
-    # Testing prompt
-    if 'control_dimensions' in selected_model:
-        default_testing_prompt = f"Please act like this: {json.dumps(selected_model['control_dimensions'])}"
-    else:
-        default_testing_prompt = "Please act according to the following instructions:"
-
-    testing_prompt = st.text_area("Control Prompt", value=default_testing_prompt, height=100, key="testing_prompt")
-
-    # Process and display results for each test prompt
-    prompts = [p.strip() for p in test_prompts.split('\n\n') if p.strip()]
-
-    # Add a button to generate the test suite
-    if st.button("Generate Test Suite"):
-        st.info("Test suite generation initiated. This may take a moment...")
-        # Here you would typically call a function to generate the test suite
-        # For now, we'll just display a placeholder message
-        st.success("Test suite generated successfully!")
-
-    st.markdown("---")
-    st.markdown(f"\n#### Responses:")
-    for prompt in prompts:
-        st.markdown(f"**{prompt}**")
-
-        col1, col2, col3, col4= st.columns(4)
-
-        with col1:
-            st.markdown("Standard")
-            response = "Sample response for prompt only."  # Replace with actual API call
-            st.text_area("Response", value=response, height=150, key=f"standard_response_{prompt[:20]}")
-
-        with col2:
-            st.markdown("With Prompt")
-            response = "Sample response with positive control vectors."  # Replace with actual API call
-            st.text_area("Response", value=response, height=150, key=f"prompt_response_{prompt[:20]}")
-
-        with col3:
-            st.markdown("(+) Control Vectors")
-            response = "Sample response with negative control vectors."  # Replace with actual API call
-            st.text_area("Response", value=response, height=150, key=f"response_positive_{prompt[:20]}")
-
-        with col4:
-            st.markdown("(-) Vectors (Inverted)")
-            response = "Sample response with negative control vectors."  # Replace with actual API call
-            st.text_area("Response", value=response, height=150, key=f"response_negative_{prompt[:20]}")
-
-        st.markdown("---")
+        # Refresh Chat button
+        if st.button("Refresh Chat"):
+            st.session_state.chat_history = []
+            st.rerun()
 
 def main():
     st.set_page_config(page_title="Steerable Models App", layout="wide")
-    steer_model_page()
+    
+    # Create tabs
+    tab1, tab2, tab3, tab4 = st.tabs(["Steer Model", "API Documentation", "Research Notebook", "Test Suite"])
+    
+    with tab1:
+        steer_model_page()
+    
+    with tab2:
+        st.write("API Documentation")
+    
+    with tab3:
+        st.write("Research Notebook")
+    
+    with tab4:
+        test_suite_page()
 
 if __name__ == "__main__":
     main()
