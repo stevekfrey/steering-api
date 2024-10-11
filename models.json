@@ -1,54 +1,22 @@
 [
     {
-        "id": "mercenary",
-        "created_at": "2024-10-10T20:28:27.328278",
+        "id": "merrrc",
+        "created_at": "2024-10-10T20:36:10.154712",
         "control_dimensions": {
             "control_dimension_0": {
                 "positive_examples": [
                     "mercenary",
                     "venal",
-                    "avaricious",
+                    "self-interested",
                     "greedy",
-                    "self-serving"
+                    "avaricious"
                 ],
                 "negative_examples": [
                     "altruistic",
-                    "principled",
+                    "selfless",
+                    "philanthropic",
                     "idealistic",
-                    "benevolent",
-                    "philanthropic"
-                ]
-            },
-            "control_dimension_1": {
-                "positive_examples": [
-                    "cool",
-                    "chilly",
-                    "frosty",
-                    "icy",
-                    "frigid"
-                ],
-                "negative_examples": [
-                    "warm",
-                    "hot",
-                    "balmy",
-                    "toasty",
-                    "sweltering"
-                ]
-            },
-            "control_dimension_2": {
-                "positive_examples": [
-                    "pleasant",
-                    "kind",
-                    "amiable",
-                    "agreeable",
-                    "friendly"
-                ],
-                "negative_examples": [
-                    "unpleasant",
-                    "mean",
-                    "rude",
-                    "hostile",
-                    "nasty"
+                    "principled"
                 ]
             }
         }

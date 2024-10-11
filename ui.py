@@ -69,12 +69,9 @@ def display_saved_models(saved_models):
         saved_models (list of dict): A list where each dict contains model details,
                                      including 'control_dimensions' dictionary.
     """
-    st.header("Saved Models")
 
     for model in saved_models:
         with st.expander(f"Model Name: {model['id']}"):
-            # st.markdown(f"**Created At:** {model['created_at']}")
-
             control_dimensions_dict = model.get('control_dimensions', {})
             positive_examples, negative_examples = parse_control_dimensions(control_dimensions_dict)
             
@@ -165,10 +162,12 @@ def steer_model_page():
             st.error("Please enter a model name.")
         else:
             control_dimensions = {}
-            parsing_errors = False
+            # Removed parsing_errors flag
 
             for i in range(3):
-                control_input = st.session_state.get(f'control_dimensions_{i}', '')
+                control_input = st.session_state.get(f'control_dimensions_{i}', '').strip()
+                if not control_input:
+                    continue  # Skip if empty
                 try:
                     parsed_json = json.loads(control_input)
                     # Validate the JSON structure
@@ -178,13 +177,13 @@ def steer_model_page():
                         raise ValueError(f"Control dimension {i+1} must contain 'positive_examples' and 'negative_examples' keys.")
                     control_dimensions[f'control_dimension_{i}'] = parsed_json
                 except json.JSONDecodeError as e:
-                    st.error(f"Invalid JSON format in control dimension {i+1}: {str(e)}")
-                    parsing_errors = True
+                    st.warning(f"Invalid JSON format in control dimension {i+1}: {str(e)}")
+                    # Skip invalid entries
                 except ValueError as ve:
-                    st.error(str(ve))
-                    parsing_errors = True
+                    st.warning(str(ve))
+                    # Skip invalid entries
 
-            if not parsing_errors:
+            if control_dimensions:
                 # Generate a unique ID for the model
                 steering_model_full_id = f"model_{int(datetime.now().timestamp())}"
 
@@ -195,7 +194,6 @@ def steer_model_page():
                 api_response = {
                     'id': model_name,
                     'created_at': created_at,
-                    # 'model': model_name,
                     'control_dimensions': control_dimensions 
                 }
 
@@ -220,9 +218,21 @@ def steer_model_page():
                     st.success("Model created and saved locally.")
                 except Exception as e:
                     st.error(f"Failed to save the model: {str(e)}")
+            else:
+                st.warning("No valid control dimensions provided. Model not saved.")
+
+    # "Reset Models" Button
+    st.markdown("---")  # Separator
 
     # Display saved models
     st.subheader("Saved Models")
+    if st.button("Reset Models"):
+        try:
+            with open("models.json", "w") as f:
+                json.dump([], f, indent=4)
+            st.success("All models have been reset. 'models.json' is now empty.")
+        except Exception as e:
+            st.error(f"Failed to reset models: {str(e)}")
     if os.path.exists("models.json"):
         with open("models.json", "r") as f:
             try:
