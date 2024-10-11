@@ -1,5 +1,4 @@
 import streamlit as st
-from streamlit_option_menu import option_menu
 import json
 import os
 from dotenv import load_dotenv
@@ -9,23 +8,27 @@ from datetime import datetime  # Added import for timestamp
 # Load environment variables
 load_dotenv()
 
+# Initialize session state for current_model if not present
+if 'current_model' not in st.session_state:
+    st.session_state['current_model'] = None
+
 def generate_positive_negative_examples(word):
     prompt = f"""Here is a word, please create an ordered list of 5 SYNONYMS (similar to the word) and then 5 ANTONYMS (the opposite of the word). Respond ONLY with a JSON object containing two keys: "positive_examples" and "negative_examples". Each key should map to a list of 5 examples. Respond with the following format:
 
-=====
-EXAMPLE INPUT:
-materialistic
+    =====
+    EXAMPLE INPUT:
+    materialistic
 
-EXAMPLE RESPONSE:
-{{
-    "positive_examples": ["materialistic", "consumerist", "acquisitive", "wealthy", "greedy"],
-    "negative_examples": ["minimalist", "austere", "spiritual", "altruistic", "ascetic"]
-}}
-=====
-INPUT:
-{word}
+    EXAMPLE RESPONSE:
+    {{
+        "positive_examples": ["materialistic", "consumerist", "acquisitive", "wealthy", "greedy"],
+        "negative_examples": ["minimalist", "austere", "spiritual", "altruistic", "ascetic"]
+    }}
+    =====
+    INPUT:
+    {word}
 
-RESPONSE:
+    RESPONSE:
 """
 
     try:
@@ -61,29 +64,66 @@ def parse_control_dimensions(control_dimensions_dict):
 
     return positive_examples, negative_examples
 
+def select_model(model_id):
+    """
+    Callback function to set the selected model in session_state.
+
+    Args:
+        model_id (str): The ID of the model to select.
+    """
+    st.session_state['current_model'] = model_id
+
 def display_saved_models(saved_models):
     """
-    Displays the saved models with properly formatted Control Dimensions.
+    Displays the saved models with SELECT buttons for selection and properly formatted Control Dimensions.
 
     Args:
         saved_models (list of dict): A list where each dict contains model details,
                                      including 'control_dimensions' dictionary.
     """
 
+    if not saved_models:
+        st.write("No models saved yet.")
+        return
+
     for model in saved_models:
-        with st.expander(f"Model Name: {model['id']}"):
-            control_dimensions_dict = model.get('control_dimensions', {})
-            positive_examples, negative_examples = parse_control_dimensions(control_dimensions_dict)
-            
-            if positive_examples:
-                st.markdown(f"**Positive Examples:** {', '.join(positive_examples)}")
-            else:
-                st.markdown("**Positive Examples:** _None provided_")
-            
-            if negative_examples:
-                st.markdown(f"**Negative Examples:** {', '.join(negative_examples)}")
-            else:
-                st.markdown("**Negative Examples:** _None provided_")
+        cols = st.columns([0.15, 1])  # First column ~15% width for the SELECT button
+
+        with cols[0]:
+            # Determine if this model is currently selected
+            is_selected = st.session_state.get('current_model') == model['id']
+
+            # Define button label based on selection
+            button_label = "✅ Current Model" if is_selected else "🔲 Select model"
+
+            # The 'disabled' parameter visually indicates selection by disabling the button
+            st.button(
+                button_label,
+                key=f"select_{model['id']}",
+                on_click=select_model,
+                args=(model['id'],),
+                disabled=is_selected,  # Disable if selected
+            )
+
+        with cols[1]:
+            # Expand the expander if the model is selected
+            with st.expander(f"### **Model Name: {model['model_name']}**", expanded=is_selected):
+                control_dimensions_dict = model.get('control_dimensions', {})
+                positive_examples, negative_examples = parse_control_dimensions(control_dimensions_dict)
+                
+                if positive_examples:
+                    st.markdown(f"**Positive Examples:** {', '.join(positive_examples)}")
+                else:
+                    st.markdown("**Positive Examples:** _None provided_")
+                
+                if negative_examples:
+                    st.markdown(f"**Negative Examples:** {', '.join(negative_examples)}")
+                else:
+                    st.markdown("**Negative Examples:** _None provided_")
+                
+                # Highlight if this model is currently selected
+                if is_selected:
+                    st.success("**This model is currently selected.**")
 
 def steer_model_page():
     st.title("Steer Model")
@@ -184,15 +224,18 @@ def steer_model_page():
                     # Skip invalid entries
 
             if control_dimensions:
-                # Generate a unique ID for the model
-                steering_model_full_id = f"model_{int(datetime.now().timestamp())}"
-
                 # Get current timestamp
+                timestamp = int(datetime.now().timestamp())
+                # Generate a unique ID combining timestamp and model name
+                steering_model_full_id = f"{timestamp}_{model_name}"
+
+                # Get current timestamp in ISO format
                 created_at = datetime.now().isoformat()
 
                 # Create the model dictionary
                 api_response = {
-                    'id': model_name,
+                    'id': steering_model_full_id,
+                    'model_name': model_name,
                     'created_at': created_at,
                     'control_dimensions': control_dimensions 
                 }
@@ -225,12 +268,14 @@ def steer_model_page():
     st.markdown("---")  # Separator
 
     # Display saved models
-    st.subheader("Saved Models")
+    st.markdown("### Saved Models")
+
     if st.button("Reset Models"):
         try:
             with open("models.json", "w") as f:
                 json.dump([], f, indent=4)
             st.success("All models have been reset. 'models.json' is now empty.")
+            st.session_state['current_model'] = None  # Clear the current_model selection
         except Exception as e:
             st.error(f"Failed to reset models: {str(e)}")
     if os.path.exists("models.json"):
