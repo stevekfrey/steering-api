@@ -15,6 +15,10 @@ load_dotenv()
 if 'current_model' not in st.session_state:
     st.session_state['current_model'] = None
 
+################################################
+# Data Helpers 
+################################################
+
 def generate_positive_negative_examples(word):
     prompt = f"""Here is a word, please create an ordered list of 5 SYNONYMS (similar to the word) and then 5 ANTONYMS (the opposite of the word). Respond ONLY with a JSON object containing two keys: "positive_examples" and "negative_examples". Each key should map to a list of 5 examples. Respond with the following format:
 
@@ -67,6 +71,11 @@ def parse_control_dimensions(control_dimensions_dict):
 
     return positive_examples, negative_examples
 
+
+################################################
+# Save and Display Models  
+################################################
+
 def select_model(model_id):
     """
     Callback function to set the selected model in session_state.
@@ -112,7 +121,7 @@ def display_saved_models():
 
         with cols[1]:
             # Expand the expander if the model is selected
-            with st.expander(f"### Model:   **{model['model']}**", expanded=is_selected): # Model Name 
+            with st.expander(f"### Model:   **{model['id']}**", expanded=is_selected): # Model Name 
                 control_dimensions = model.get('control_dimensions', {})
 
                 if control_dimensions:
@@ -139,8 +148,16 @@ def display_saved_models():
                 if is_selected:
                     st.success("**This model is currently selected.**")
 
+################################################
+# Main Steer Model Page 
+################################################
+
 def steer_model_page():
     st.title("Steer Model")
+
+    ################################################
+    # Create Model 
+    ################################################
 
     st.markdown("---")
 
@@ -280,10 +297,14 @@ def steer_model_page():
                 else:
                     st.warning("No valid control dimensions provided. Model not saved.")
 
+
+
+    ################################################
+    # Reset Saved Models 
+    ################################################
+
     # "Reset Models" Button
     st.markdown("---")  # Separator
-
-    # Display saved models
     st.markdown("### Saved Models")
 
     if st.button("Reset Models"):
@@ -302,6 +323,10 @@ def steer_model_page():
         display_saved_models()
     else:
         st.write("No models saved yet.")
+
+    ################################################
+    # Prepare to Generate 
+    ################################################
 
     # Third section: Generate
     st.markdown("---")
@@ -327,6 +352,10 @@ def steer_model_page():
         # Sliders for control dimensions
         control_settings = {}
         control_dimensions = selected_model.get('control_dimensions', {})
+
+        ################################################
+        # Adjust Control Dimensions 
+        ################################################
 
         if control_dimensions:
             st.markdown("#### Adjust Control Dimensions")
@@ -362,6 +391,10 @@ def steer_model_page():
         else:
             st.info("This model has no control dimensions.")
 
+
+        ################################################
+        # Chat with Steered Model 
+        ################################################
         # Initialize chat history
         if 'chat_history' not in st.session_state:
             st.session_state.chat_history = []
@@ -407,6 +440,9 @@ def steer_model_page():
             st.session_state.chat_history = []
             st.rerun()
 
+################################################
+# Main 
+################################################
 def main():
     st.set_page_config(page_title="Steerable Models App", layout="wide")
 

@@ -141,7 +141,14 @@ def create_steerable_model():
         data = request.get_json()
         model_label = data.get('model_label')
         control_dimensions = data.get('control_dimensions')
-        suffix_list = data.get('suffix_list', DEFAULT_SUFFIX_LIST) 
+        
+        # Use the provided suffix_list if it's not empty, otherwise use DEFAULT_SUFFIX_LIST
+        suffix_list = data.get('suffix_list')
+        if suffix_list is None or len(suffix_list) == 0:
+            suffix_list = DEFAULT_SUFFIX_LIST
+            app.logger.info(f"Using DEFAULT_SUFFIX_LIST: {suffix_list}")
+        else:
+            app.logger.info(f"Using provided suffix_list: {suffix_list}")
 
         # Validate required fields
         if not model_label or not control_dimensions:
