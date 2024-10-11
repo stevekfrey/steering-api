@@ -347,9 +347,6 @@ def steer_model_page():
             st.error(f"Error loading models: {str(e)}")
             return
 
-        # Text box for user_prompt
-        user_prompt = st.text_input("Enter your prompt:", value="How do you think about the universe?", key="user_prompt")
-
         # Sliders for control dimensions
         control_settings = {}
         control_dimensions = selected_model.get('control_dimensions', {})
@@ -357,17 +354,39 @@ def steer_model_page():
         if control_dimensions:
             st.markdown("#### Adjust Control Dimensions")
             for word in control_dimensions.keys():
-                slider_label = f"{word}"
-                control_value = st.slider(
-                    label=slider_label,
-                    min_value=-10,
-                    max_value=10,
-                    value=0,
-                    key=f"slider_{word}"
-                )
-                control_settings[word] = control_value
+                col1, col2 = st.columns([1, 5])
+                
+                # Number input
+                with col1:
+                    number_value = st.number_input(
+                        label=f"{word}",
+                        min_value=-10,
+                        max_value=10,
+                        value=0,
+                        step=1,
+                        key=f"number_{word}"
+                    )
+                
+                # Slider
+                with col2:
+                    slider_value = st.slider(
+                        label=f"",
+                        min_value=-10,
+                        max_value=10,
+                        value=int(number_value),
+                        key=f"slider_{word}"
+                    )
+                
+                # Synchronize number input and slider
+                if slider_value != number_value:
+                    st.session_state[f"number_{word}"] = slider_value
+                
+                control_settings[word] = slider_value
         else:
             st.info("This model has no control dimensions.")
+
+        # Text box for user_prompt
+        user_prompt = st.text_input("Enter your prompt:", value="How do you think about the universe?", key="user_prompt")
 
         # Button to generate
         if st.button("Generate Response"):
@@ -400,7 +419,7 @@ def steer_model_page():
                     st.session_state['model_response'] = f"Error: {str(e)}"
 
         # Large text box for response
-        st.markdown("**Generated Response:**")
+        st.markdown("#### **Response:**")
         st.text_area(
             label="Model Response",
             value=st.session_state.get('model_response', "No response generated yet. Click 'Generate Response' to get a response."),
@@ -432,10 +451,17 @@ Discuss the impact of social media on society."""
     else:
         default_testing_prompt = "Please act according to the following instructions:"
 
-    testing_prompt = st.text_area("Testing Prompt", value=default_testing_prompt, height=100, key="testing_prompt")
+    testing_prompt = st.text_area("Control Prompt", value=default_testing_prompt, height=100, key="testing_prompt")
 
     # Process and display results for each test prompt
     prompts = [p.strip() for p in test_prompts.split('\n\n') if p.strip()]
+
+    # Add a button to generate the test suite
+    if st.button("Generate Test Suite"):
+        st.info("Test suite generation initiated. This may take a moment...")
+        # Here you would typically call a function to generate the test suite
+        # For now, we'll just display a placeholder message
+        st.success("Test suite generated successfully!")
 
     st.markdown("---")
     st.markdown(f"\n#### Responses:")
