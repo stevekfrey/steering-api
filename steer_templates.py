@@ -1,3 +1,5 @@
+BASE_MODEL_NAME = "aifeifei798/DarkIdol-Llama-3.1-8B-Instruct-1.2-Uncensored"
+
 user_tag = "<|start_header_id|>user<|end_header_id|>You: "
 asst_tag = "<|eot_id|><|start_header_id|>assistant<|end_header_id|>Assistant:"
 
@@ -15,3 +17,6 @@ DEFAULT_SUFFIX_LIST = [
     "Is", "Good", "I can't", "Ex", "Who are", "I can see that", "Wow,",
     "Today is a", "Hey friend", "Sometimes friends"
 ]
+
+SIMPLE_SUFFIX_LIST = [
+    "", "That game", "I can see", "Hmm, this", "I can relate to", "Who is"]

@@ -1,0 +1,110 @@
+[
+  {
+    "id": "Supermodel2-f4e1",
+    "name": "Supermodel2",
+    "control_dimensions": {
+      "missionary": {
+        "positive_examples": [
+          "missionary",
+          "evangelist",
+          "proselytizer",
+          "crusader",
+          "emissary"
+        ],
+        "negative_examples": [
+          "heretic",
+          "apostate",
+          "pagan",
+          "unbeliever",
+          "skeptic"
+        ]
+      },
+      "savvy": {
+        "positive_examples": [
+          "savvy",
+          "shrewd",
+          "astute",
+          "canny",
+          "knowledgeable"
+        ],
+        "negative_examples": [
+          "naive",
+          "ignorant",
+          "unsophisticated",
+          "gullible",
+          "inexperienced"
+        ]
+      },
+      "sophisticated": {
+        "positive_examples": [
+          "sophisticated",
+          "refined",
+          "cultured",
+          "polished",
+          "urbane"
+        ],
+        "negative_examples": [
+          "unsophisticated",
+          "crude",
+          "unrefined",
+          "provincial",
+          "simplistic"
+        ]
+      }
+    }
+  },
+  {
+    "id": "Supermodel3-1191",
+    "name": "Supermodel3",
+    "control_dimensions": {
+      "messy": {
+        "positive_examples": [
+          "disorganized",
+          "cluttered",
+          "disheveled",
+          "unkempt",
+          "sloppy"
+        ],
+        "negative_examples": [
+          "tidy",
+          "neat",
+          "orderly",
+          "organized",
+          "clean"
+        ]
+      },
+      "supercool": {
+        "positive_examples": [
+          "awesome",
+          "hip",
+          "groovy",
+          "rad",
+          "dope"
+        ],
+        "negative_examples": [
+          "uncool",
+          "lame",
+          "nerdy",
+          "square",
+          "dorky"
+        ]
+      },
+      "chicken": {
+        "positive_examples": [
+          "fowl",
+          "poultry",
+          "pullet",
+          "broiler",
+          "cockerel"
+        ],
+        "negative_examples": [
+          "beef",
+          "pork",
+          "fish",
+          "lamb",
+          "vegan"
+        ]
+      }
+    }
+  }
+]

@@ -6,6 +6,8 @@ from litellm import completion
 from datetime import datetime  # Added import for timestamp
 from streamlit_test_suite import test_suite_page
 import time
+import steer_api_client  # Importing the API client
+from steer_templates import DEFAULT_SUFFIX_LIST, SIMPLE_SUFFIX_LIST
 
 # Load environment variables
 load_dotenv()
@@ -13,6 +15,10 @@ load_dotenv()
 # Initialize session state for current_model if not present
 if 'current_model' not in st.session_state:
     st.session_state['current_model'] = None
+
+################################################
+# Data Helpers 
+################################################
 
 def generate_positive_negative_examples(word):
     prompt = f"""Here is a word, please create an ordered list of 5 SYNONYMS (similar to the word) and then 5 ANTONYMS (the opposite of the word). Respond ONLY with a JSON object containing two keys: "positive_examples" and "negative_examples". Each key should map to a list of 5 examples. Respond with the following format:
@@ -66,6 +72,11 @@ def parse_control_dimensions(control_dimensions_dict):
 
     return positive_examples, negative_examples
 
+
+################################################
+# Save and Display Models  
+################################################
+
 def select_model(model_id):
     """
     Callback function to set the selected model in session_state.
@@ -75,15 +86,25 @@ def select_model(model_id):
     """
     st.session_state['current_model'] = model_id
 
-def display_saved_models(saved_models):
+# Add this function to load models from a local JSON file
+def load_models_from_json():
+    try:
+        with open('saved_models.json', 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return []
+
+# Add this function to save models to a local JSON file
+def save_models_to_json(models):
+    with open('saved_models.json', 'w') as f:
+        json.dump(models, f, indent=2)
+
+def display_saved_models():
     """
     Displays the saved models with SELECT buttons for selection
-    and properly formatted Control Dimensions.
-
-    Args:
-        saved_models (list of dict): A list where each dict contains model details,
-                                     including 'control_dimensions' dictionary.
+    and properly formatted Control Dimensions by fetching from local JSON.
     """
+    saved_models = load_models_from_json()
 
     if not saved_models:
         st.write("No models saved yet.")
@@ -110,7 +131,7 @@ def display_saved_models(saved_models):
 
         with cols[1]:
             # Expand the expander if the model is selected
-            with st.expander(f"### Model:   **{model['model_name']}**", expanded=is_selected): # Model Name 
+            with st.expander(f"### Model:   **{model['id']}**", expanded=is_selected): # Model Name 
                 control_dimensions = model.get('control_dimensions', {})
 
                 if control_dimensions:
@@ -137,8 +158,16 @@ def display_saved_models(saved_models):
                 if is_selected:
                     st.success("**This model is currently selected.**")
 
+################################################
+# Main Steer Model Page 
+################################################
+
 def steer_model_page():
     st.title("Steer Model")
+
+    ################################################
+    # Create Model 
+    ################################################
 
     st.markdown("---")
 
@@ -157,12 +186,12 @@ def steer_model_page():
         st.write("**Control Dimensions**")
         st.write('Click "Generate Examples" to generate a list of positive and negative examples for the control word, or enter your own list, formatted as JSON. ')
 
-    placeholder_words = ["mercenary", "savvy", "sophisticated"]
+    placeholder_words = ["missionary", "savvy", "sophisticated"]
     
     # Create dynamic rows for control dimensions
     for i in range(st.session_state.num_control_dimensions):
-        if f'word_{i}' not in st.session_state:
-            st.session_state[f'word_{i}'] = 'mercenary'
+        # if f'word_{i}' not in st.session_state:
+            # st.session_state[f'word_{i}'] = 'empty'
         if f'control_dimensions_{i}' not in st.session_state:
             default_json = json.dumps({
                 "positive_examples": ["example1", "example2"],
@@ -235,95 +264,96 @@ def steer_model_page():
         if not model_name:
             st.error("Please enter a model name.")
         else:
-            control_dimensions = {}
+            with st.spinner("Waiting for API to train a set of control vectors for your model. This typically takes 2-3 minutes."):
+                control_dimensions = {}
 
-            for i in range(st.session_state.num_control_dimensions):
-                control_word = st.session_state.get(f'word_{i}', '').strip()
-                control_input = st.session_state.get(f'control_dimensions_{i}', '').strip()
+                for i in range(st.session_state.num_control_dimensions):
+                    control_word = st.session_state.get(f'word_{i}', '').strip()
+                    control_input = st.session_state.get(f'control_dimensions_{i}', '').strip()
 
-                if control_word and control_input:
+                    if control_word and control_input:
+                        try:
+                            parsed_json = json.loads(control_input)
+                            if not isinstance(parsed_json, dict):
+                                raise ValueError(f"Control dimension '{control_word}' is not a JSON object.")
+                            if "positive_examples" not in parsed_json or "negative_examples" not in parsed_json:
+                                raise ValueError(f"Control dimension '{control_word}' must contain 'positive_examples' and 'negative_examples' keys.")
+                            control_dimensions[control_word] = parsed_json
+                        except json.JSONDecodeError as e:
+                            st.warning(f"Invalid JSON format in control dimension '{control_word}': {str(e)}")
+                        except ValueError as ve:
+                            st.warning(str(ve))
+
+                if control_dimensions:
+                    # Prepare the data payload for the API
+                    api_control_dimensions = {}
+                    for word, examples in control_dimensions.items():
+                        api_control_dimensions[word] = {
+                            "positive_examples": examples.get("positive_examples", []),
+                            "negative_examples": examples.get("negative_examples", [])
+                        }
+
+                    print("API Control Dimensions:", json.dumps(api_control_dimensions, indent=2))
+
                     try:
-                        parsed_json = json.loads(control_input)
-                        if not isinstance(parsed_json, dict):
-                            raise ValueError(f"Control dimension '{control_word}' is not a JSON object.")
-                        if "positive_examples" not in parsed_json or "negative_examples" not in parsed_json:
-                            raise ValueError(f"Control dimension '{control_word}' must contain 'positive_examples' and 'negative_examples' keys.")
-                        control_dimensions[control_word] = parsed_json
-                    except json.JSONDecodeError as e:
-                        st.warning(f"Invalid JSON format in control dimension '{control_word}': {str(e)}")
-                    except ValueError as ve:
-                        st.warning(str(ve))
+                        # Call the API to create a steerable model
+                        model_id = steer_api_client.create_steerable_model(
+                            model_label=model_name,
+                            control_dimensions=api_control_dimensions,
+                            suffix_list=SIMPLE_SUFFIX_LIST
+                        )
+                        
+                        # Create a new model object with the API response
+                        new_model = {
+                            "id": model_id,
+                            "name": model_name,
+                            "control_dimensions": control_dimensions
+                        }
+                        
+                        # Load existing models
+                        existing_models = load_models_from_json()
+                        
+                        # Add the new model
+                        existing_models.append(new_model)
+                        
+                        # Save updated models list
+                        save_models_to_json(existing_models)
+                        
+                        st.success(f"Model created with ID: {model_id}")
+                        st.session_state['current_model'] = model_id  # Set as current model
+                    except Exception as e:
+                        st.error(f"Failed to create model: {str(e)}")
+                else:
+                    st.warning("No valid control dimensions provided. Model not saved.")
 
-            if control_dimensions:
-                # Get current timestamp
-                timestamp = int(datetime.now().timestamp())
-                # Generate a unique ID combining timestamp and model name
-                steering_model_full_id = f"{timestamp}_{model_name}"
 
-                # Get current timestamp in ISO format
-                created_at = datetime.now().isoformat()
 
-                control_dimension_words = list(control_dimensions.keys())
-
-                # Create the model dictionary
-                api_response = {
-                    'id': steering_model_full_id,
-                    'model_name': model_name,
-                    'created_at': created_at,
-                    'control_dimensions': control_dimensions,
-                    'control_dimension_words': control_dimension_words
-                }
-
-                # Save the response locally in a JSON file
-                try:
-                    models_data = []
-                    if os.path.exists("models.json"):
-                        with open("models.json", "r") as f:
-                            try:
-                                models_data = json.load(f)
-                            except json.JSONDecodeError:
-                                st.error("Error reading the models.json file. Please ensure it's a valid JSON.")
-                                models_data = []
-
-                    # Append new model
-                    models_data.append(api_response)
-
-                    # Save back to the file
-                    with open("models.json", "w") as f:
-                        json.dump(models_data, f, indent=4)
-
-                    st.success("Model created and saved locally.")
-                except Exception as e:
-                    st.error(f"Failed to save the model: {str(e)}")
-            else:
-                st.warning("No valid control dimensions provided. Model not saved.")
+    ################################################
+    # Reset Saved Models 
+    ################################################
 
     # "Reset Models" Button
     st.markdown("---")  # Separator
-
-    # Display saved models
     st.markdown("### Saved Models")
 
     if st.button("Reset Models"):
         try:
-            with open("models.json", "w") as f:
-                json.dump([], f, indent=4)
-            st.success("All models have been reset. 'models.json' is now empty.")
+            # Reset models by clearing the local JSON file
+            save_models_to_json([])
+            st.success("All models have been reset.")
             st.session_state['current_model'] = None  # Clear the current_model selection
         except Exception as e:
             st.error(f"Failed to reset models: {str(e)}")
-    if os.path.exists("models.json"):
-        with open("models.json", "r") as f:
-            try:
-                models_data = json.load(f)
-                if models_data:
-                    display_saved_models(models_data)
-                else:
-                    st.write("No models saved yet.")
-            except json.JSONDecodeError:
-                st.error("Error reading the models.json file. Please ensure it's a valid JSON.")
+
+    saved_models = load_models_from_json()
+    if saved_models:
+        display_saved_models()
     else:
         st.write("No models saved yet.")
+
+    ################################################
+    # Prepare to Generate 
+    ################################################
 
     # Third section: Generate
     st.markdown("---")
@@ -336,18 +366,25 @@ def steer_model_page():
         selected_model_id = st.session_state['current_model']
         st.write(f"**Generating with Model ID:** `{selected_model_id}`")
 
-        # Load the model details from models.json
+        # Load the model details from the API
         try:
-            with open("models.json", "r") as f:
-                models_data = json.load(f)
-                selected_model = next((model for model in models_data if model['id'] == selected_model_id), None)
-                if selected_model is None:
-                    st.error("Selected model not found in saved models.")
-                    return
+            selected_model = steer_api_client.get_steerable_model(selected_model_id)
+            if not selected_model:
+                st.error("Selected model not found in saved models.")
+                return
         except Exception as e:
-            st.error(f"Error loading models: {str(e)}")
+            st.error(f"Error loading model details: {str(e)}")
             return
 
+        # Sliders for control dimensions
+        control_settings = {}
+        control_dimensions = selected_model.get('control_dimensions', {})
+
+        ################################################
+        # Adjust Control Dimensions 
+        ################################################
+
+        
         # Sliders for control dimensions
         control_settings = {}
         control_dimensions = selected_model.get('control_dimensions', {})
@@ -386,6 +423,11 @@ def steer_model_page():
         else:
             st.info("This model has no control dimensions.")
 
+
+
+        ################################################
+        # Chat with Steered Model 
+        ################################################
         # Initialize chat history
         if 'chat_history' not in st.session_state:
             st.session_state.chat_history = []
@@ -404,9 +446,18 @@ def steer_model_page():
             with st.chat_message("user"):
                 st.markdown(prompt)
             
-            # Generate response (replace this with your actual response generation)
-            full_response = f"This is a simulated response based on your input: {prompt}"
-            
+            # Generate response via the API
+            try:
+                full_response = steer_api_client.generate_completion(
+                    model_id=selected_model_id,
+                    prompt=prompt,
+                    control_settings=control_settings,
+                    settings={"max_new_tokens": 256}
+                )
+            except Exception as e:
+                st.error(f"Error generating response: {str(e)}")
+                full_response = "An error occurred while generating the response."
+
             # Display assistant response
             with st.chat_message("assistant"):
                 st.markdown(full_response)
@@ -422,8 +473,20 @@ def steer_model_page():
             st.session_state.chat_history = []
             st.rerun()
 
+################################################
+# Main 
+################################################
 def main():
     st.set_page_config(page_title="Steerable Models App", layout="wide")
+
+    # Perform health check
+    try:
+        print("Performing health check...")
+        health_status = steer_api_client.health_check()
+        st.success(f"Connected to Remote API: {health_status}")
+    except Exception as e:
+        st.error(f"Failed to connect to Remote API: {str(e)}")
+    
     
     # Create tabs
     tab1, tab2, tab3, tab4 = st.tabs(["Steer Model", "API Documentation", "Research Notebook", "Test Suite"])
