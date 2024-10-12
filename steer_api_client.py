@@ -1,8 +1,9 @@
 import requests
 import json
-
-# Load the REMOTE_URL from config.py
-from config import REMOTE_URL
+from dotenv import load_dotenv
+import os
+load_dotenv()
+REMOTE_URL = os.getenv('REMOTE_URL')
 
 # Function to create a steerable model
 def create_steerable_model(model_label, control_dimensions, suffix_list=None):

@@ -7,6 +7,7 @@ from datetime import datetime  # Added import for timestamp
 from streamlit_test_suite import test_suite_page
 import time
 import steer_api_client  # Importing the API client
+from steer_templates import DEFAULT_SUFFIX_LIST, SIMPLE_SUFFIX_LIST
 
 # Load environment variables
 load_dotenv()
@@ -85,16 +86,25 @@ def select_model(model_id):
     """
     st.session_state['current_model'] = model_id
 
+# Add this function to load models from a local JSON file
+def load_models_from_json():
+    try:
+        with open('saved_models.json', 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return []
+
+# Add this function to save models to a local JSON file
+def save_models_to_json(models):
+    with open('saved_models.json', 'w') as f:
+        json.dump(models, f, indent=2)
+
 def display_saved_models():
     """
     Displays the saved models with SELECT buttons for selection
-    and properly formatted Control Dimensions by fetching from the API.
+    and properly formatted Control Dimensions by fetching from local JSON.
     """
-    try:
-        saved_models = steer_api_client.list_steerable_models()
-    except Exception as e:
-        st.error(f"Error fetching saved models: {str(e)}")
-        return
+    saved_models = load_models_from_json()
 
     if not saved_models:
         st.write("No models saved yet.")
@@ -254,7 +264,7 @@ def steer_model_page():
         if not model_name:
             st.error("Please enter a model name.")
         else:
-            with st.spinner("Waiting for API response"):
+            with st.spinner("Waiting for API to train a set of control vectors for your model. This typically takes 2-3 minutes."):
                 control_dimensions = {}
 
                 for i in range(st.session_state.num_control_dimensions):
@@ -289,9 +299,28 @@ def steer_model_page():
                         # Call the API to create a steerable model
                         model_id = steer_api_client.create_steerable_model(
                             model_label=model_name,
-                            control_dimensions=api_control_dimensions
+                            control_dimensions=api_control_dimensions,
+                            suffix_list=SIMPLE_SUFFIX_LIST
                         )
+                        
+                        # Create a new model object with the API response
+                        new_model = {
+                            "id": model_id,
+                            "name": model_name,
+                            "control_dimensions": control_dimensions
+                        }
+                        
+                        # Load existing models
+                        existing_models = load_models_from_json()
+                        
+                        # Add the new model
+                        existing_models.append(new_model)
+                        
+                        # Save updated models list
+                        save_models_to_json(existing_models)
+                        
                         st.success(f"Model created with ID: {model_id}")
+                        st.session_state['current_model'] = model_id  # Set as current model
                     except Exception as e:
                         st.error(f"Failed to create model: {str(e)}")
                 else:
@@ -309,17 +338,15 @@ def steer_model_page():
 
     if st.button("Reset Models"):
         try:
-            # Assuming there's an API endpoint to delete all models or reset
-            # If not, this part needs to be adjusted based on available API endpoints
-            # For now, we'll iterate through and delete each model
-            models = steer_api_client.list_steerable_models()
-            for model in models:
-                steer_api_client.delete_steerable_model(model['id'])
+            # Reset models by clearing the local JSON file
+            save_models_to_json([])
             st.success("All models have been reset.")
             st.session_state['current_model'] = None  # Clear the current_model selection
         except Exception as e:
             st.error(f"Failed to reset models: {str(e)}")
-    if steer_api_client.list_steerable_models():
+
+    saved_models = load_models_from_json()
+    if saved_models:
         display_saved_models()
     else:
         st.write("No models saved yet.")
@@ -357,6 +384,11 @@ def steer_model_page():
         # Adjust Control Dimensions 
         ################################################
 
+        
+        # Sliders for control dimensions
+        control_settings = {}
+        control_dimensions = selected_model.get('control_dimensions', {})
+
         if control_dimensions:
             st.markdown("#### Adjust Control Dimensions")
             for word in control_dimensions.keys():
@@ -390,6 +422,7 @@ def steer_model_page():
                 control_settings[word] = st.session_state[f"value_{word}"]
         else:
             st.info("This model has no control dimensions.")
+
 
 
         ################################################
