@@ -1,24 +1,25 @@
 import requests
 import json
-from dotenv import load_dotenv
 import os
+from dotenv import load_dotenv
 load_dotenv()
 REMOTE_URL = os.getenv('REMOTE_URL')
+API_BASE_URL = os.getenv('API_BASE_URL', 'http://localhost:5000')
+
+if not REMOTE_URL:
+    raise ValueError("REMOTE_URL is not set in the environment variables")
 
 # Function to create a steerable model
-def create_steerable_model(model_label, control_dimensions, suffix_list=None):
+def create_steerable_model(model_label, control_dimensions):
     """Create a new steerable model and return its ID."""
-    print (f"Creating steerable model with label: {model_label} and control dimensions: {control_dimensions}")
+    url = f"{API_BASE_URL}/steerable-model"
     payload = {
         "model_label": model_label,
-        "control_dimensions": control_dimensions,
-        "suffix_list": suffix_list or []
+        "control_dimensions": control_dimensions
     }
-    response = requests.post(f"{REMOTE_URL}/steerable-model", json=payload)
-    if response.status_code == 201:
-        return response.json()['id']
-    else:
-        raise Exception(f"Failed to create model: {response.text}")
+    response = requests.post(url, json=payload)
+    response.raise_for_status()
+    return response.json()
 
 # Function to list all steerable models
 def list_steerable_models(limit=10, offset=0):
@@ -73,4 +74,8 @@ def health_check():
             raise Exception(f"Health check failed with status code {response.status_code}: {response.text}")
     except requests.exceptions.RequestException as e:
         raise Exception(f"Health check request failed: {e}")
-    
+def get_model_status(model_id):
+    url = f"{API_BASE_URL}/steerable-model/{model_id}/status"
+    response = requests.get(url)
+    response.raise_for_status()
+    return response.json()

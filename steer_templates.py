@@ -5,6 +5,11 @@ asst_tag = "<|eot_id|><|start_header_id|>assistant<|end_header_id|>Assistant:"
 
 DEFAULT_TEMPLATE = "{user_tag} Act as if you're extremely {persona}. {asst_tag}{suffix}"
 
+prompt_filepaths = {
+    "emotions": "data/emotions_small.json",
+    "facts": "data/facts_small.json"
+}
+
 DEFAULT_SUFFIX_LIST = [
     "", "That game", "I can see", "Hmm, this", "I can relate to", "Who is",
     "I understand the", "Ugh,", "What the hell was", "Hey, did anyone", "Although",
