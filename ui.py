@@ -7,6 +7,7 @@ from datetime import datetime  # Added import for timestamp
 from streamlit_test_suite import test_suite_page
 import time
 import steer_api_client  # Importing the API client
+from config import DEFAULT_NUM_CONTROL_DIMENSIONS, DEFAULT_NUM_SYNONYMS
 
 # Load environment variables
 load_dotenv()
@@ -20,7 +21,7 @@ if 'current_model' not in st.session_state:
 ################################################
 
 def generate_positive_negative_examples(word):
-    prompt = f"""Here is a word, please create an ordered list of 5 SYNONYMS (similar to the word) and then 5 ANTONYMS (the opposite of the word). Respond ONLY with a JSON object containing two keys: "positive_examples" and "negative_examples". Each key should map to a list of 5 examples. Respond with the following format:
+    prompt = f"""Here is a word, please create an ordered list of {DEFAULT_NUM_SYNONYMS} SYNONYMS (similar to the word) and then {DEFAULT_NUM_SYNONYMS} ANTONYMS (the opposite of the word). Respond ONLY with a JSON object containing two keys: "positive_examples" and "negative_examples". Each key should map to a list of 5 examples. Respond with the following format:
 
     =====
     EXAMPLE INPUT:
@@ -28,8 +29,8 @@ def generate_positive_negative_examples(word):
 
     EXAMPLE RESPONSE:
     {{
-        "positive_examples": ["materialistic", "consumerist", "acquisitive", "wealthy", "greedy"],
-        "negative_examples": ["minimalist", "austere", "spiritual", "altruistic", "ascetic"]
+        "positive_examples": ["materialistic", "consumerist", "acquisitive", "wealthy", "greedy", "possessive", "money-oriented", "worldly", "profit-driven", "commercialistic"],
+        "negative_examples": ["minimalist", "austere", "spiritual", "altruistic", "ascetic", "frugal", "selfless", "anti-consumerist", "non-materialistic", "content"]
     }}
     =====
     INPUT:
@@ -85,16 +86,33 @@ def select_model(model_id):
     """
     st.session_state['current_model'] = model_id
 
+# Add this function to handle local file operations
+def load_saved_models_from_file():
+    # Create the model_data directory if it doesn't exist
+    os.makedirs('model_data', exist_ok=True)
+    
+    # Load the models from the file in the model_data directory
+    try:
+        with open('model_data/saved_models.json', 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return []
+
+def save_models_to_file(models):
+    # Create the model_data directory if it doesn't exist
+    os.makedirs('model_data', exist_ok=True)
+    
+    # Save the models to a file in the model_data directory
+    with open('model_data/saved_models.json', 'w') as f:
+        json.dump(models, f)
+
+# Update the display_saved_models function
 def display_saved_models():
     """
     Displays the saved models with SELECT buttons for selection
-    and properly formatted Control Dimensions by fetching from the API.
+    and properly formatted Control Dimensions by loading from a local file.
     """
-    try:
-        saved_models = steer_api_client.list_steerable_models()
-    except Exception as e:
-        st.error(f"Error fetching saved models: {str(e)}")
-        return
+    saved_models = load_saved_models_from_file()
 
     if not saved_models:
         st.write("No models saved yet.")
@@ -165,7 +183,7 @@ def steer_model_page():
 
     # Initialize session state for dynamic control dimensions
     if 'num_control_dimensions' not in st.session_state:
-        st.session_state.num_control_dimensions = 3
+        st.session_state.num_control_dimensions = DEFAULT_NUM_CONTROL_DIMENSIONS
 
     # Create column headers
     header_cols = st.columns([1, 1, 2])
@@ -234,13 +252,13 @@ def steer_model_page():
     with col1:
         if st.button("➕ Add Word"):
             if 'num_control_dimensions' not in st.session_state:
-                st.session_state.num_control_dimensions = 3  # Default value
+                st.session_state.num_control_dimensions = DEFAULT_NUM_CONTROL_DIMENSIONS  # Default value
             st.session_state.num_control_dimensions += 1
             st.rerun()
     with col2:
         if st.button("➖ Remove Word"):
             if 'num_control_dimensions' not in st.session_state:
-                st.session_state.num_control_dimensions = 3  # Default value
+                st.session_state.num_control_dimensions = DEFAULT_NUM_CONTROL_DIMENSIONS  # Default value
             if st.session_state.num_control_dimensions > 1:  # Prevent removing all words
                 st.session_state.num_control_dimensions -= 1
                 st.rerun()
@@ -254,7 +272,8 @@ def steer_model_page():
         if not model_name:
             st.error("Please enter a model name.")
         else:
-            with st.spinner("Waiting for API response"):
+
+            with st.spinner("Creating custom steering vectors. This usually takes 5-10 minutes. We'll let you know when they're ready. "):
                 control_dimensions = {}
 
                 for i in range(st.session_state.num_control_dimensions):
@@ -287,17 +306,33 @@ def steer_model_page():
 
                     try:
                         # Call the API to create a steerable model
-                        model_id = steer_api_client.create_steerable_model(
+                        response = steer_api_client.create_steerable_model(
                             model_label=model_name,
                             control_dimensions=api_control_dimensions
                         )
-                        st.success(f"Model created with ID: {model_id}")
+                        
+                        model_id = response['id']
+                        
+                        # Wait for model creation to complete
+                        if steer_api_client.wait_for_model_creation(model_id):
+                            # Add the new model to the local file
+                            saved_models = load_saved_models_from_file()
+                            saved_models.append({
+                                'id': model_id,
+                                'label': model_name,
+                                'control_dimensions': api_control_dimensions
+                            })
+                            save_models_to_file(saved_models)
+                            
+                            # Show success message
+                            st.success(f"Successfully created steering model: {model_name}")
+                            st.balloons()  # Optional: Add a celebratory effect
+                        else:
+                            st.error(f"Model creation failed or timed out for model: {model_name}")
                     except Exception as e:
                         st.error(f"Failed to create model: {str(e)}")
                 else:
                     st.warning("No valid control dimensions provided. Model not saved.")
-
-
 
     ################################################
     # Reset Saved Models 
@@ -309,17 +344,13 @@ def steer_model_page():
 
     if st.button("Reset Models"):
         try:
-            # Assuming there's an API endpoint to delete all models or reset
-            # If not, this part needs to be adjusted based on available API endpoints
-            # For now, we'll iterate through and delete each model
-            models = steer_api_client.list_steerable_models()
-            for model in models:
-                steer_api_client.delete_steerable_model(model['id'])
+            # Clear the local file
+            save_models_to_file([])
             st.success("All models have been reset.")
-            st.session_state['current_model'] = None  # Clear the current_model selection
+            st.session_state['current_model'] = None
         except Exception as e:
             st.error(f"Failed to reset models: {str(e)}")
-    if steer_api_client.list_steerable_models():
+    if load_saved_models_from_file():
         display_saved_models()
     else:
         st.write("No models saved yet.")
@@ -446,15 +477,6 @@ def steer_model_page():
 def main():
     st.set_page_config(page_title="Steerable Models App", layout="wide")
 
-    # Perform health check
-    try:
-        print("Performing health check...")
-        health_status = steer_api_client.health_check()
-        st.success(f"Connected to Remote API: {health_status}")
-    except Exception as e:
-        st.error(f"Failed to connect to Remote API: {str(e)}")
-    
-    
     # Create tabs
     tab1, tab2, tab3, tab4 = st.tabs(["Steer Model", "API Documentation", "Research Notebook", "Test Suite"])
     

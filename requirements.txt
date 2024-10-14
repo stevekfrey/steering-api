@@ -6,3 +6,4 @@ torch==2.4.0
 transformers==4.45.1
 numpy
 json_log_formatter
+streamlit 
