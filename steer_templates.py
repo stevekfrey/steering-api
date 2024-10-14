@@ -22,3 +22,6 @@ DEFAULT_SUFFIX_LIST = [
     "Is", "Good", "I can't", "Ex", "Who are", "I can see that", "Wow,",
     "Today is a", "Hey friend", "Sometimes friends"
 ]
+
+SIMPLE_SUFFIX_LIST = [
+    "", "That game", "I can see", "Hmm, this", "I can relate to", "Who is"]

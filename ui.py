@@ -8,6 +8,8 @@ from streamlit_test_suite import test_suite_page
 import time
 import steer_api_client  # Importing the API client
 from config import DEFAULT_NUM_CONTROL_DIMENSIONS, DEFAULT_NUM_SYNONYMS
+from steer_templates import DEFAULT_SUFFIX_LIST, SIMPLE_SUFFIX_LIST
+
 
 # Load environment variables
 load_dotenv()
@@ -94,9 +96,6 @@ def load_saved_models_from_file():
     # Load the models from the file in the model_data directory
     try:
         with open('model_data/saved_models.json', 'r') as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return []
 
 def save_models_to_file(models):
     # Create the model_data directory if it doesn't exist
@@ -113,6 +112,18 @@ def display_saved_models():
     and properly formatted Control Dimensions by loading from a local file.
     """
     saved_models = load_saved_models_from_file()
+    
+def save_models_to_json(models):
+    with open('saved_models.json', 'w') as f:
+        json.dump(models, f, indent=2)
+
+def display_saved_models():
+    """
+    Displays the saved models with SELECT buttons for selection
+    and properly formatted Control Dimensions by fetching from local JSON.
+    """
+    saved_models = load_models_from_json()
+
 
     if not saved_models:
         st.write("No models saved yet.")
@@ -308,7 +319,8 @@ def steer_model_page():
                         # Call the API to create a steerable model
                         response = steer_api_client.create_steerable_model(
                             model_label=model_name,
-                            control_dimensions=api_control_dimensions
+                            control_dimensions=api_control_dimensions,
+                            suffix_list=SIMPLE_SUFFIX_LIST
                         )
                         
                         model_id = response['id']
@@ -329,6 +341,25 @@ def steer_model_page():
                             st.balloons()  # Optional: Add a celebratory effect
                         else:
                             st.error(f"Model creation failed or timed out for model: {model_name}")
+
+                        # Create a new model object with the API response
+                        new_model = {
+                            "id": model_id,
+                            "name": model_name,
+                            "control_dimensions": control_dimensions
+                        }
+                        
+                        # Load existing models
+                        existing_models = load_models_from_json()
+                        
+                        # Add the new model
+                        existing_models.append(new_model)
+                        
+                        # Save updated models list
+                        save_models_to_json(existing_models)
+                        
+                        st.success(f"Model created with ID: {model_id}")
+                        st.session_state['current_model'] = model_id  # Set as current model
                     except Exception as e:
                         st.error(f"Failed to create model: {str(e)}")
                 else:
@@ -344,9 +375,11 @@ def steer_model_page():
 
     if st.button("Reset Models"):
         try:
-            # Clear the local file
-            save_models_to_file([])
-            st.success("All models have been reset.")
+
+            # Reset models by clearing the local JSON file
+            save_models_to_json([])
+
+    st.success("All models have been reset.")
             st.session_state['current_model'] = None
         except Exception as e:
             st.error(f"Failed to reset models: {str(e)}")
@@ -388,6 +421,11 @@ def steer_model_page():
         # Adjust Control Dimensions 
         ################################################
 
+        
+        # Sliders for control dimensions
+        control_settings = {}
+        control_dimensions = selected_model.get('control_dimensions', {})
+
         if control_dimensions:
             st.markdown("#### Adjust Control Dimensions")
             for word in control_dimensions.keys():
@@ -421,6 +459,7 @@ def steer_model_page():
                 control_settings[word] = st.session_state[f"value_{word}"]
         else:
             st.info("This model has no control dimensions.")
+
 
 
         ################################################
