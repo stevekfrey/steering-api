@@ -18,6 +18,10 @@ load_dotenv()
 if 'current_model' not in st.session_state:
     st.session_state['current_model'] = None
 
+# Initialize session state for pending_models if not present
+if 'pending_models' not in st.session_state:
+    st.session_state['pending_models'] = []
+
 ################################################
 # Data Helpers 
 ################################################
@@ -74,6 +78,15 @@ def parse_control_dimensions(control_dimensions_dict):
 
     return positive_examples, negative_examples
 
+def check_api_health():
+    try:
+        response = steer_api_client.health_check()
+        if response:
+            st.success(f"Successfully connected to Steer API: {response}")
+        else:
+            st.warning("API health check returned an unexpected response.")
+    except Exception as e:
+        st.error(f"API health check failed: {str(e)}")
 
 ################################################
 # Save and Display Models  
@@ -157,6 +170,82 @@ def display_saved_models():
                 if is_selected:
                     st.success("**This model is currently selected.**")
 
+# At the top of the file or within the main() function
+
+def check_pending_models_status():
+    N = int(os.getenv("CHECK_MODEL_STATUS_EVERY_N_SECONDS", 10))
+    if 'pending_models' not in st.session_state or not st.session_state['pending_models']:
+        return  # No pending models
+
+    if 'last_model_status_check' not in st.session_state:
+        st.session_state['last_model_status_check'] = 0
+
+    now = time.time()
+    if now - st.session_state['last_model_status_check'] >= N:
+        st.session_state['last_model_status_check'] = now
+        # Loop over pending models and get their statuses individually
+        updated_pending_models = []
+        for model in st.session_state['pending_models']:
+            try:
+                response = steer_api_client.get_model_status(model['id'])
+                status = response.get('status', 'unknown')
+                if status == 'ready':
+                    # Show success message
+                    st.success(f"Model '{model['label']}' (ID: {model['id']}) is ready!")
+                    # Add to saved_models
+                    saved_models = load_saved_models()
+                    saved_models.append({
+                        'id': model['id'],
+                        'label': model['label'],
+                        'control_dimensions': model['control_dimensions']
+                    })
+                    save_models(saved_models)
+                    # Remove from pending_models
+                    # We will rebuild the pending models list without this model
+                else:
+                    # Update model status
+                    model['status'] = status
+                    updated_pending_models.append(model)
+            except Exception as e:
+                st.error(f"Failed to get status for model {model['id']}: {str(e)}")
+                model['status'] = 'error'
+                updated_pending_models.append(model)
+        # Update pending_models list
+        st.session_state['pending_models'] = updated_pending_models
+        
+def display_pending_models():
+    if 'pending_models' not in st.session_state or not st.session_state['pending_models']:
+        return  # No pending models
+
+    st.markdown("### Pending Models")
+    for model in st.session_state['pending_models']:
+        cols = st.columns([0.15, 1])  # First column ~15% width
+        with cols[0]:
+            st.write("⏳ Pending...")
+        with cols[1]:
+            st.markdown(f"**Model:** {model['label']}  **ID:** `{model['id']}`")
+            st.write(f"Status: {model['status'].capitalize()}")
+            # Show control dimensions if desired
+            control_dimensions = model.get('control_dimensions', {})
+            if control_dimensions:
+                for word, examples in control_dimensions.items():
+                    st.markdown(f"**{word}**")
+
+                    positive_examples = examples.get('positive_examples', [])
+                    negative_examples = examples.get('negative_examples', [])
+
+                    if positive_examples:
+                        st.markdown(f"**(+):** {', '.join(positive_examples)}")
+                    else:
+                        st.markdown("**(+):** _None provided_")
+
+                    if negative_examples:
+                        st.markdown(f"**(-):** {', '.join(negative_examples)}")
+                    else:
+                        st.markdown("**(-):** _None provided_")
+                    st.markdown("---")  # Separator between control words
+            else:
+                st.markdown("**No control dimensions provided for this model.**")
 ################################################
 # Main Steer Model Page 
 ################################################
@@ -263,68 +352,63 @@ def steer_model_page():
         if not model_name:
             st.error("Please enter a model name.")
         else:
+            control_dimensions = {}
 
-            with st.spinner("Creating custom steering vectors. This usually takes 5-10 minutes. We'll let you know when they're ready. "):
-                control_dimensions = {}
+            for i in range(st.session_state.num_control_dimensions):
+                control_word = st.session_state.get(f'word_{i}', '').strip()
+                control_input = st.session_state.get(f'control_dimensions_text_{i}', '').strip()
 
-                for i in range(st.session_state.num_control_dimensions):
-                    control_word = st.session_state.get(f'word_{i}', '').strip()
-                    control_input = st.session_state.get(f'control_dimensions_{i}', '').strip()
-
-                    if control_word and control_input:
-                        try:
-                            parsed_json = json.loads(control_input)
-                            if not isinstance(parsed_json, dict):
-                                raise ValueError(f"Control dimension '{control_word}' is not a JSON object.")
-                            if "positive_examples" not in parsed_json or "negative_examples" not in parsed_json:
-                                raise ValueError(f"Control dimension '{control_word}' must contain 'positive_examples' and 'negative_examples' keys.")
-                            control_dimensions[control_word] = parsed_json
-                        except json.JSONDecodeError as e:
-                            st.warning(f"Invalid JSON format in control dimension '{control_word}': {str(e)}")
-                        except ValueError as ve:
-                            st.warning(str(ve))
-
-                if control_dimensions:
-                    # Prepare the data payload for the API
-                    api_control_dimensions = {}
-                    for word, examples in control_dimensions.items():
-                        api_control_dimensions[word] = {
-                            "positive_examples": examples.get("positive_examples", []),
-                            "negative_examples": examples.get("negative_examples", [])
-                        }
-
-                    print("API Control Dimensions:", json.dumps(api_control_dimensions, indent=2))
-
+                if control_word and control_input:
                     try:
-                        # Call the API to create a steerable model
-                        response = steer_api_client.create_steerable_model(
-                            model_label=model_name,
-                            control_dimensions=api_control_dimensions,
-                            prompt_list=SIMPLE_PROMPT_LIST
-                        )
-                        
-                        model_id = response['id']
-                        
-                        # Wait for model creation to complete
-                        if steer_api_client.wait_for_model_creation(model_id):
-                            # Add the new model to the saved models
-                            saved_models = load_saved_models()
-                            saved_models.append({
-                                'id': model_id,
-                                'label': model_name,
-                                'control_dimensions': api_control_dimensions
-                            })
-                            save_models(saved_models)
-                            
-                            st.success(f"Successfully created steering model: {model_name}")
-                            st.balloons()
-                            st.session_state['current_model'] = model_id  # Set as current model
-                        else:
-                            st.error(f"Model creation failed or timed out for model: {model_name}")
-                    except Exception as e:
-                        st.error(f"Failed to create model: {str(e)}")
-                else:
-                    st.warning("No valid control dimensions provided. Model not saved.")
+                        parsed_json = json.loads(control_input)
+                        if not isinstance(parsed_json, dict):
+                            raise ValueError(f"Control dimension '{control_word}' is not a JSON object.")
+                        if "positive_examples" not in parsed_json or "negative_examples" not in parsed_json:
+                            raise ValueError(f"Control dimension '{control_word}' must contain 'positive_examples' and 'negative_examples' keys.")
+                        control_dimensions[control_word] = parsed_json
+                    except json.JSONDecodeError as e:
+                        st.warning(f"Invalid JSON format in control dimension '{control_word}': {str(e)}")
+                    except ValueError as ve:
+                        st.warning(str(ve))
+
+            if control_dimensions:
+                # Prepare the data payload for the API
+                api_control_dimensions = {
+                    word: {
+                        "positive_examples": examples.get("positive_examples", []),
+                        "negative_examples": examples.get("negative_examples", [])
+                    }
+                    for word, examples in control_dimensions.items()
+                }
+
+                print("API Control Dimensions:", json.dumps(api_control_dimensions, indent=2))
+
+                try:
+                    # Call the API to create a steerable model
+                    response = steer_api_client.create_steerable_model(  # Changed from create_steerable_model_async
+                        model_label=model_name,
+                        control_dimensions=api_control_dimensions,
+                        prompt_list=SIMPLE_PROMPT_LIST
+                    )
+
+                    model_id = response['id']
+                    status = response.get('status', 'pending')  # Default to 'pending' if status is not provided
+
+                    # Add the new model to pending_models
+                    st.session_state['pending_models'].append({
+                        'id': model_id,
+                        'label': model_name,
+                        'control_dimensions': api_control_dimensions,
+                        'status': status,
+                        'submitted_at': time.time()
+                    })
+
+                    st.info(f"Model '{model_name}' submitted. ID: {model_id}")
+                    st.session_state['current_model'] = model_id  # Set as current model
+                except Exception as e:
+                    st.error(f"Failed to create model: {str(e)}")
+            else:
+                st.warning("No valid control dimensions provided. Model not saved.")
 
     ################################################
     # Reset Saved Models 
@@ -339,9 +423,18 @@ def steer_model_page():
             save_models([])
             st.success("All models have been reset.")
             st.session_state['current_model'] = None
+            # Also reset pending_models
+            st.session_state['pending_models'] = []
         except Exception as e:
             st.error(f"Failed to reset models: {str(e)}")
 
+    # Display pending models
+    display_pending_models()
+
+    # Check the status of pending models
+    check_pending_models_status()
+
+    # Display saved models
     if load_saved_models():
         display_saved_models()
     else:
@@ -475,6 +568,11 @@ def steer_model_page():
 def main():
     st.set_page_config(page_title="Steerable Models App", layout="wide")
 
+    # Perform API health check on first load
+    if 'api_health_checked' not in st.session_state:
+        check_api_health()
+        st.session_state['api_health_checked'] = True
+
     # Create tabs
     tab1, tab2, tab3, tab4 = st.tabs(["Steer Model", "API Documentation", "Research Notebook", "Test Suite"])
     
@@ -491,6 +589,14 @@ def main():
         test_suite_page()
 
 if __name__ == "__main__":
+    
     main()
 
     # TODO: add something to check the list from the API to ensure the model is valid before calling it. update the list with 'model is valid' beforehand 
+
+
+
+
+
+
+

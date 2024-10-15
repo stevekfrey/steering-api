@@ -52,8 +52,13 @@ app.logger.setLevel(logging.INFO)
 app.config['MODEL'], app.config['TOKENIZER'] = load_model()
 app.config['MODEL_NAME'] = BASE_MODEL_NAME
 
-# Load the appropriate prompt list
-PROMPT_LIST = load_prompt_list(prompt_filepaths[DEFAULT_PROMPT_LIST])
+# Load the default prompt type
+DEFAULT_PROMPT_TYPE = os.environ.get('DEFAULT_PROMPT_TYPE', 'emotions')
+if DEFAULT_PROMPT_TYPE not in prompt_filepaths:
+    PROMPT_LIST = DEFAULT_PROMPT_LIST
+else: 
+    # Load the appropriate prompt list
+    PROMPT_LIST = load_prompt_list(prompt_filepaths[DEFAULT_PROMPT_TYPE])
 
 ################################################
 # In-memory model status dictionary and JSON storage
@@ -121,7 +126,7 @@ def train_steerable_model_task(self, model_id, model_label, control_dimensions, 
 
 @app.route('/', methods=['GET'])
 def index():
-    return "Hello from Steer-API!"
+    return jsonify({"status": "success", "message": "Hello from Steer API"}), 200
 
 # Endpoint to create a steerable model
 @app.route('/steerable-model', methods=['POST'])

@@ -6,8 +6,8 @@ asst_tag = "<|eot_id|><|start_header_id|>assistant<|end_header_id|>Assistant:"
 DEFAULT_TEMPLATE = "{user_tag} Act as if you're extremely {persona}. {asst_tag}{prompt}"
 
 prompt_filepaths = {
-    "emotions": "data/emotions_small.json",
-    "facts": "data/facts_small.json"
+    "emotions": "data_full/emotions_small.json",
+    "facts": "data_full/facts_small.json"
 }
 
 DEFAULT_PROMPT_LIST = [
