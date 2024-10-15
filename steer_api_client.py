@@ -50,6 +50,7 @@ def delete_steerable_model(model_id):
         raise Exception(f"Failed to delete model: {response.text}")
 
 # Function to generate a completion using a specific model
+
 def generate_completion(model_id, prompt, control_settings=None, settings=None):
     """Generate a completion using the specified model and prompt."""
     payload = {

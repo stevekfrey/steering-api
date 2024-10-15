@@ -45,8 +45,8 @@ app.logger.setLevel(logging.INFO)
 app.config['MODEL'], app.config['TOKENIZER'] = load_model()
 app.config['MODEL_NAME'] = BASE_MODEL_NAME 
 
-# Load the appropriate suffix list
-DEFAULT_SUFFIX_LIST = load_prompt_list(prompt_filepaths[DEFAULT_PROMPT_LIST])
+# Load the appropriate prompt list
+PROMPT_LIST = load_prompt_list(prompt_filepaths[DEFAULT_PROMPT_LIST])
 
 ################################################
 # Main Endpoints 
@@ -63,12 +63,12 @@ def create_steerable_model():
         data = request.get_json()
         model_label = data.get('model_label')
         control_dimensions = data.get('control_dimensions')
-        suffix_list = data.get('suffix_list', DEFAULT_SUFFIX_LIST)
+        prompt_list = data.get('prompt_list', PROMPT_LIST)
 
         response = create_steerable_model_async(
             model_label=model_label,
             control_dimensions=control_dimensions,
-            suffix_list=suffix_list,
+            prompt_list=prompt_list,
             model=app.config['MODEL'],
             tokenizer=app.config['TOKENIZER']
         )

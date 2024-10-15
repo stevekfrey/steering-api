@@ -21,7 +21,7 @@ If the trait isn't specified in control_settings, it defaults to 0.0
 ####Formatting 
 Since this is a completions model, we manually insert user and asst tags to structure the output: 
 ```
-DEFAULT_TEMPLATE = "{user_tag} Act as if you're extremely {persona}. {asst_tag}{suffix}"
+DEFAULT_TEMPLATE = "{user_tag} Act as if you're extremely {persona}. {asst_tag}{prompt}"
 ```
 
 ####Control Vectors

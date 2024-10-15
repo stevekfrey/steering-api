@@ -8,7 +8,7 @@ from streamlit_test_suite import test_suite_page
 import time
 import steer_api_client  # Importing the API client
 from config import DEFAULT_NUM_CONTROL_DIMENSIONS, DEFAULT_NUM_SYNONYMS
-from steer_templates import DEFAULT_SUFFIX_LIST, SIMPLE_SUFFIX_LIST
+from steer_templates import DEFAULT_PROMPT_LIST, SIMPLE_PROMPT_LIST
 
 
 # Load environment variables
@@ -88,43 +88,23 @@ def select_model(model_id):
     """
     st.session_state['current_model'] = model_id
 
-# Add this function to handle local file operations
-def load_saved_models_from_file():
-    # Create the model_data directory if it doesn't exist
-    os.makedirs('model_data', exist_ok=True)
-    
-    # Load the models from the file in the model_data directory
+# Replace multiple save/load functions with these unified versions
+def load_saved_models():
     try:
         with open('model_data/saved_models.json', 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return []
 
-def save_models_to_file(models):
-    # Create the model_data directory if it doesn't exist
+def save_models(models):
     os.makedirs('model_data', exist_ok=True)
-    
-    # Save the models to a file in the model_data directory
     with open('model_data/saved_models.json', 'w') as f:
-        json.dump(models, f)
-
-# Update the display_saved_models function
-def display_saved_models():
-    """
-    Displays the saved models with SELECT buttons for selection
-    and properly formatted Control Dimensions by loading from a local file.
-    """
-    saved_models = load_saved_models_from_file()
-    
-def save_models_to_json(models):
-    with open('saved_models.json', 'w') as f:
         json.dump(models, f, indent=2)
 
+# Update display_saved_models function
 def display_saved_models():
-    """
-    Displays the saved models with SELECT buttons for selection
-    and properly formatted Control Dimensions by fetching from local JSON.
-    """
-    saved_models = load_models_from_json()
-
-
+    saved_models = load_saved_models()
+    
     if not saved_models:
         st.write("No models saved yet.")
         return
@@ -320,46 +300,27 @@ def steer_model_page():
                         response = steer_api_client.create_steerable_model(
                             model_label=model_name,
                             control_dimensions=api_control_dimensions,
-                            suffix_list=SIMPLE_SUFFIX_LIST
+                            prompt_list=SIMPLE_PROMPT_LIST
                         )
                         
                         model_id = response['id']
                         
                         # Wait for model creation to complete
                         if steer_api_client.wait_for_model_creation(model_id):
-                            # Add the new model to the local file
-                            saved_models = load_saved_models_from_file()
+                            # Add the new model to the saved models
+                            saved_models = load_saved_models()
                             saved_models.append({
                                 'id': model_id,
                                 'label': model_name,
                                 'control_dimensions': api_control_dimensions
                             })
-                            save_models_to_file(saved_models)
+                            save_models(saved_models)
                             
-                            # Show success message
                             st.success(f"Successfully created steering model: {model_name}")
-                            st.balloons()  # Optional: Add a celebratory effect
+                            st.balloons()
+                            st.session_state['current_model'] = model_id  # Set as current model
                         else:
                             st.error(f"Model creation failed or timed out for model: {model_name}")
-
-                        # Create a new model object with the API response
-                        new_model = {
-                            "id": model_id,
-                            "name": model_name,
-                            "control_dimensions": control_dimensions
-                        }
-                        
-                        # Load existing models
-                        existing_models = load_models_from_json()
-                        
-                        # Add the new model
-                        existing_models.append(new_model)
-                        
-                        # Save updated models list
-                        save_models_to_json(existing_models)
-                        
-                        st.success(f"Model created with ID: {model_id}")
-                        st.session_state['current_model'] = model_id  # Set as current model
                     except Exception as e:
                         st.error(f"Failed to create model: {str(e)}")
                 else:
@@ -375,15 +336,13 @@ def steer_model_page():
 
     if st.button("Reset Models"):
         try:
-
-            # Reset models by clearing the local JSON file
-            save_models_to_json([])
-
-    st.success("All models have been reset.")
+            save_models([])
+            st.success("All models have been reset.")
             st.session_state['current_model'] = None
         except Exception as e:
             st.error(f"Failed to reset models: {str(e)}")
-    if load_saved_models_from_file():
+
+    if load_saved_models():
         display_saved_models()
     else:
         st.write("No models saved yet.")

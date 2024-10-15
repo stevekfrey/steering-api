@@ -7,3 +7,4 @@ transformers==4.45.1
 numpy
 json_log_formatter
 streamlit 
+datasets 
