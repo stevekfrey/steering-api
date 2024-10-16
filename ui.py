@@ -378,7 +378,7 @@ def steer_model_page():
     ################################################
 
     if ready_models:
-        st.markdown("### ✅ Saved Models")
+        st.markdown("### ☀️ Saved Models")
         for model in ready_models:
             cols = st.columns([0.15, 1])  # First column ~15% width for the SELECT button
 
@@ -426,7 +426,7 @@ def steer_model_page():
                     if is_selected:
                         st.success("**This model is currently selected.**")
     else:
-        st.markdown("### ✅ Saved Models")
+        st.markdown("### ☀️ Saved Models")
         st.write("No saved models available.")
 
     ################################################
@@ -497,7 +497,7 @@ def steer_model_page():
                     st.session_state[f"value_{word}"] = slider_value
                     st.session_state[f"number_{word}"] = slider_value
             else:
-                st.info("This model has no control dimensions.")
+                print(f"No control dimensions found for the selected model. {selected_model_id}")
 
         ################################################
         # Chat with Steered Model 
