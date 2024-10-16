@@ -11,6 +11,4 @@ datasets
 python-dotenv
 pandas
 tqdm
-celery==5.2.3
-kombu==5.2.3
-redis==4.1.0
+gunicorn

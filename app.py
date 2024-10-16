@@ -2,10 +2,11 @@ from flask import Flask, request, jsonify
 import logging
 import traceback
 import json_log_formatter
-from celery import Celery
 import os
 import json
 import time
+from threading import Thread, Lock
+import uuid
 
 # Import functions from steering_api_functions.py
 from steering_api_functions import (
@@ -25,17 +26,10 @@ from steer_templates import (
 )
 
 ##############################################
-# Flask and Celery setup
+# Flask setup
 ##############################################
 
 app = Flask(__name__)
-
-# Celery configuration
-app.config['CELERY_BROKER_URL'] = os.environ.get('CELERY_BROKER_URL', 'redis://localhost:6379/0')
-app.config['CELERY_RESULT_BACKEND'] = os.environ.get('CELERY_RESULT_BACKEND', 'redis://localhost:6379/0')
-
-celery = Celery(app.name, broker=app.config['CELERY_BROKER_URL'])
-celery.conf.update(app.config)
 
 # Set up structured JSON logging
 formatter = json_log_formatter.JSONFormatter()
@@ -60,65 +54,56 @@ else:
     # Load the appropriate prompt list
     PROMPT_LIST = load_prompt_list(prompt_filepaths[DEFAULT_PROMPT_TYPE])
 
+logging.info(f"Loaded prompt list: {PROMPT_LIST}")
+
 ################################################
-# In-memory model status dictionary and JSON storage
+# In-memory model status dictionary
 ################################################
 
-# Dictionary to store model statuses and other metadata
+# Dictionary to store model statuses and metadata
 STEERABLE_MODELS = {}
 
-# Path to the JSON file for persisting model data
-STEERABLE_MODELS_JSON_PATH = 'steerable_models.json'
-
-# Load existing models from JSON file if it exists
-if os.path.exists(STEERABLE_MODELS_JSON_PATH):
-    with open(STEERABLE_MODELS_JSON_PATH, 'r') as f:
-        STEERABLE_MODELS = json.load(f)
-else:
-    # Initialize an empty JSON file
-    with open(STEERABLE_MODELS_JSON_PATH, 'w') as f:
-        json.dump(STEERABLE_MODELS, f)
-
-def save_models_to_json():
-    """Utility function to save the STEERABLE_MODELS dict to JSON file."""
-    with open(STEERABLE_MODELS_JSON_PATH, 'w') as f:
-        json.dump(STEERABLE_MODELS, f)
+# Lock for thread-safe operations on STEERABLE_MODELS
+steerable_models_lock = Lock()
 
 ################################################
-# Celery task for model training
+# Background Model Training Function
 ################################################
 
-@celery.task(bind=True)
-def train_steerable_model_task(self, model_id, model_label, control_dimensions, prompt_list):
+def train_steerable_model(model_id, model_label, control_dimensions, prompt_list):
     try:
         app.logger.info(f"Starting training for model {model_id}")
-
-        # Update status to 'training' in the in-memory dict and JSON file
-        STEERABLE_MODELS[model_id]['status'] = 'training'
-        save_models_to_json()
+        
+        # Update the model status to 'training'
+        with steerable_models_lock:
+            STEERABLE_MODELS[model_id]['status'] = 'training'
 
         # Perform the actual model training
-        create_dataset_and_train_vector(
-            model_id=model_id,
-            model_label=model_label,
-            control_dimensions=control_dimensions,
-            prompt_list=prompt_list,
-            model=app.config['MODEL'],
-            tokenizer=app.config['TOKENIZER']
-        )
+        control_vectors = {}
+        for trait, examples in control_dimensions.items():
+            positive_examples = examples.get('positive_examples', [])
+            negative_examples = examples.get('negative_examples', [])
+            control_vectors[trait] = create_dataset_and_train_vector(
+                positive_examples=positive_examples,
+                negative_examples=negative_examples,
+                prompt_list=prompt_list,
+                template=DEFAULT_TEMPLATE,
+                model=app.config['MODEL'],
+                tokenizer=app.config['TOKENIZER']
+            )
 
-        # Update status to 'ready' after training completes
-        STEERABLE_MODELS[model_id]['status'] = 'ready'
-        save_models_to_json()
+        # Update the model data with control vectors
+        with steerable_models_lock:
+            STEERABLE_MODELS[model_id]['control_vectors'] = control_vectors
+            STEERABLE_MODELS[model_id]['status'] = 'ready'
 
-        app.logger.info(f"Model {model_id} training completed")
+        app.logger.info(f"Model {model_id} training completed.\n   Steering vectors created: {control_vectors}")
 
     except Exception as e:
         # Update status to 'failed' in case of any exception
-        STEERABLE_MODELS[model_id]['status'] = 'failed'
-        save_models_to_json()
+        with steerable_models_lock:
+            STEERABLE_MODELS[model_id]['status'] = 'failed'
         app.logger.error(f"Error training model {model_id}", extra={'error': str(e), 'traceback': traceback.format_exc()})
-        raise e
 
 ################################################
 # Main Endpoints
@@ -141,12 +126,12 @@ def create_steerable_model_endpoint():
             app.logger.warning('Invalid request: missing model_label or control_dimensions')
             return jsonify({'error': 'model_label and control_dimensions are required'}), 400
 
-        # Generate a unique model_id (you can use any method; here we use UUID)
-        import uuid
-        model_id = str(uuid.uuid4())
+        # Generate a unique model_id
+        unique_id = uuid.uuid4().hex[:4]
+        model_id = f"{model_label}-{unique_id}"
 
-        # Save the initial model data with status 'pending' in the in-memory dict and JSON file
-        model_data = {
+        # Create the initial model data
+        model_response_data = {
             'id': model_id,
             'object': 'steerable_model',
             'created_at': int(time.time()),
@@ -155,24 +140,20 @@ def create_steerable_model_endpoint():
             'control_dimensions': control_dimensions,
             'status': 'pending'
         }
-        STEERABLE_MODELS[model_id] = model_data
-        save_models_to_json()
 
-        # Start the Celery task for model training
-        task = train_steerable_model_task.delay(model_id, model_label, control_dimensions, prompt_list)
+        # Save the initial model data
+        with steerable_models_lock:
+            STEERABLE_MODELS[model_id] = model_response_data
+
+        # Start the background thread for model training
+        training_thread = Thread(
+            target=train_steerable_model,
+            args=(model_id, model_label, control_dimensions, prompt_list)
+        )
+        training_thread.start()
 
         # Return the initial model data to the user
-        response = {
-            'id': model_id,
-            'object': 'steerable_model',
-            'created_at': model_data['created_at'],
-            'model': app.config['MODEL_NAME'],
-            'model_label': model_label,
-            'control_dimensions': control_dimensions,
-            'status': 'pending'
-        }
-
-        return jsonify(response), 202  # 202 Accepted
+        return jsonify(model_response_data), 202  # 202 Accepted
 
     except Exception as e:
         app.logger.error('Error in create_steerable_model', extra={'error': str(e), 'traceback': traceback.format_exc()})
@@ -184,7 +165,8 @@ def list_models():
     limit = request.args.get('limit', default=10, type=int)
     offset = request.args.get('offset', default=0, type=int)
 
-    models_list = list(STEERABLE_MODELS.values())[offset:offset+limit]
+    with steerable_models_lock:
+        models_list = list(STEERABLE_MODELS.values())[offset:offset+limit]
 
     # Prepare the response data without control vectors but including control_dimensions
     data = [{
@@ -202,7 +184,8 @@ def list_models():
 # Endpoint to retrieve a specific steerable model
 @app.route('/steerable-model/<model_id>', methods=['GET'])
 def get_model(model_id):
-    model = STEERABLE_MODELS.get(model_id)
+    with steerable_models_lock:
+        model = STEERABLE_MODELS.get(model_id)
     if not model:
         app.logger.warning('Steerable model not found', extra={'model_id': model_id})
         return jsonify({'error': 'Steerable model not found'}), 404
@@ -222,24 +205,26 @@ def get_model(model_id):
 # Endpoint to delete a steerable model
 @app.route('/steerable-model/<model_id>', methods=['DELETE'])
 def delete_model(model_id):
-    if model_id in STEERABLE_MODELS:
-        delete_steerable_model(model_id)
-        del STEERABLE_MODELS[model_id]
-        save_models_to_json()
+    with steerable_models_lock:
+        if model_id in STEERABLE_MODELS:
+            # Perform any necessary cleanup (e.g., delete model files)
+            delete_steerable_model(model_id)
+            del STEERABLE_MODELS[model_id]
+            app.logger.info('Steerable model deleted', extra={'model_id': model_id})
+            return jsonify({
+                'id': model_id,
+                'object': 'steerable_model',
+                'deleted': True
+            }), 200
+        else:
+            app.logger.warning('Steerable model not found for deletion', extra={'model_id': model_id})
+            return jsonify({'error': 'Steerable model not found'}), 404
 
-        app.logger.info('Steerable model deleted', extra={'model_id': model_id})
-        return jsonify({
-            'id': model_id,
-            'object': 'steerable_model',
-            'deleted': True
-        }), 200
-    else:
-        app.logger.warning('Steerable model not found for deletion', extra={'model_id': model_id})
-        return jsonify({'error': 'Steerable model not found'}), 404
-
+# Endpoint to check the status of a model
 @app.route('/steerable-model/<model_id>/status', methods=['GET'])
 def check_model_status(model_id):
-    model = STEERABLE_MODELS.get(model_id)
+    with steerable_models_lock:
+        model = STEERABLE_MODELS.get(model_id)
     if not model:
         app.logger.warning('Steerable model not found', extra={'model_id': model_id})
         return jsonify({'error': 'Steerable model not found'}), 404
@@ -260,18 +245,20 @@ def generate_completion():
             app.logger.warning('Invalid request: missing model or prompt')
             return jsonify({'error': 'Model and prompt are required'}), 400
 
+        logging.info(f"Received request to create generation with model: {model_name_request}\n and prompt: {prompt}")
         # Check if the specified model is ready
-        model = STEERABLE_MODELS.get(model_name_request)
-        if model:
-            if model.get('status') != 'ready':
-                app.logger.warning('Model not ready', extra={'model_id': model_name_request})
-                return jsonify({'error': f'Model {model_name_request} is not ready'}), 400
-        else:
-            app.logger.warning('Model not found', extra={'model_id': model_name_request})
-            return jsonify({'error': f'Model {model_name_request} not found'}), 404
+        with steerable_models_lock:
+            model = STEERABLE_MODELS.get(model_name_request)
+            if model:
+                if model.get('status') != 'ready':
+                    app.logger.warning('Model not ready', extra={'model_id': model_name_request})
+                    return jsonify({'error': f'Model {model_name_request} is not ready'}), 400
+            else:
+                app.logger.warning('Model not found', extra={'model_id': model_name_request})
+                return jsonify({'error': f'Model {model_name_request} not found'}), 404
 
         # Log input data
-        app.logger.info('Completion requested', extra={'model': model_name_request, 'prompt': prompt})
+        app.logger.info('*** Completion requested', extra={'model': model_name_request, 'prompt': prompt})
 
         # Generate the completion response
         response = generate_completion_response(
@@ -300,4 +287,4 @@ def handle_exception(e):
     return jsonify(response), 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port=5000, threaded=True)

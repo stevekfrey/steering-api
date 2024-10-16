@@ -35,7 +35,7 @@ def create_steerable_model(model_label, control_dimensions, prompt_list=None):
         response.raise_for_status()
 
 # Function to list all steerable models
-def list_steerable_models(limit=10, offset=0):
+def list_steerable_models(limit=20, offset=0):
     """List all steerable models."""
     params = {'limit': limit, 'offset': offset}
     response = requests.get(f"{REMOTE_URL}/steerable-model", params=params)

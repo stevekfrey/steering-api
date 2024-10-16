@@ -338,7 +338,7 @@ def generate_completion_response(
 
     # Prepare the response
     response = {
-        'id': uuid.uuid4().hex,
+        'model_id': model_name_request,
         'object': 'text_completion',
         'created': datetime.datetime.utcnow().isoformat(),
         'model': model_name_request,
@@ -360,6 +360,7 @@ class ModelStatus(Enum):
 model_status = {}
 
 def create_steerable_model_function(
+    model_id: str, 
     model_label: str,
     control_dimensions: dict,
     prompt_list: list,
@@ -385,9 +386,7 @@ def create_steerable_model_function(
         if not model_label or not control_dimensions:
             raise ValueError('model_label and control_dimensions are required')
 
-        # Generate a unique identifier for the model
-        unique_id = uuid.uuid4().hex[:4]
-        steering_model_full_id = f"{model_label}-{unique_id}"
+        steering_model_full_id = model_id
 
         # Prepare to store control vectors for each dimension
         control_vectors = {}
