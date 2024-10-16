@@ -7,6 +7,7 @@ import json
 import time
 from threading import Thread, Lock
 import uuid
+import numpy as np
 
 # Import functions from steering_api_functions.py
 from steering_api_functions import (
@@ -35,8 +36,13 @@ app = Flask(__name__)
 formatter = json_log_formatter.JSONFormatter()
 json_handler = logging.StreamHandler()
 json_handler.setFormatter(formatter)
+
 app.logger.addHandler(json_handler)
 app.logger.setLevel(logging.INFO)
+
+# Add these constants near the top of the file
+MODELS_DIR = 'steerable_models'
+MODELS_FILE = os.path.join(MODELS_DIR, 'steerable_models.json')
 
 ################################################
 # Load model
@@ -65,6 +71,37 @@ STEERABLE_MODELS = {}
 
 # Lock for thread-safe operations on STEERABLE_MODELS
 steerable_models_lock = Lock()
+
+# Comment out or remove these functions
+'''
+def save_models_to_json():
+    os.makedirs(MODELS_DIR, exist_ok=True)
+    serializable_models = {}
+    for model_id, model_data in STEERABLE_MODELS.items():
+        serializable_model = model_data.copy()
+        if 'control_vectors' in serializable_model:
+            serializable_model['control_vectors'] = {
+                trait: vector.tolist() if isinstance(vector, np.ndarray) else vector
+                for trait, vector in serializable_model['control_vectors'].items()
+            }
+        serializable_models[model_id] = serializable_model
+    
+    with open(MODELS_FILE, 'w') as f:
+        json.dump(serializable_models, f)
+
+def load_models_from_json():
+    if os.path.exists(MODELS_FILE):
+        with open(MODELS_FILE, 'r') as f:
+            loaded_models = json.load(f)
+        for model_id, model_data in loaded_models.items():
+            if 'control_vectors' in model_data:
+                model_data['control_vectors'] = {
+                    trait: np.array(vector) if isinstance(vector, list) else vector
+                    for trait, vector in model_data['control_vectors'].items()
+                }
+        return loaded_models
+    return {}
+'''
 
 ################################################
 # Background Model Training Function

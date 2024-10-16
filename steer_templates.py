@@ -10,6 +10,8 @@ prompt_filepaths = {
     "facts": "data_full/facts_small.json"
 }
 
+MODEL_LOCAL_SAVE_PATH='model_data/saved_models.json'
+
 DEFAULT_PROMPT_LIST = [
     "", "That game", "I can see", "Hmm, this", "I can relate to", "Who is",
     "I understand the", "Ugh,", "What the hell was", "Hey, did anyone", "Although",
