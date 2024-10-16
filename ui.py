@@ -456,86 +456,118 @@ def steer_model_page():
 
         # Sliders for control dimensions
         control_dimensions = selected_model.get('control_dimensions', {})
+        print('control_dimensions: ', control_dimensions)
 
         if control_dimensions:
             st.markdown("#### Adjust Control Dimensions")
             for word in control_dimensions.keys():
+                # Initialize session state for this word if not already done
+                if f"value_{word}" not in st.session_state:
+                    st.session_state[f"value_{word}"] = 0
+
                 col1, col2 = st.columns([1, 5])
                 
                 with col1:
                     number_value = st.number_input(
                         label=f"{word}",
-                        min_value=-10,
-                        max_value=10,
-                        value=0,
-                        step=1,
-                        key=f"number_{word}"
+                        min_value=-5.0,
+                        max_value=5.0,
+                        value=float(st.session_state[f"value_{word}"]),  # Convert to float
+                        step=0.5,
+                        key=f"number_{word}",
+                        on_change=lambda: setattr(st.session_state, f"value_{word}", st.session_state[f"number_{word}"])
                     )
                 
                 with col2:
                     slider_value = st.slider(
-                        label=f"",
-                        min_value=-10,
-                        max_value=10,
-                        value=0,
-                        key=f"slider_{word}"
+                        label="",
+                        min_value=-5.0,
+                        max_value=5.0,
+                        value=float(st.session_state[f"value_{word}"]),  # Convert to float
+                        key=f"slider_{word}", 
+                        step=0.5,
+                        on_change=lambda: setattr(st.session_state, f"value_{word}", st.session_state[f"slider_{word}"])
                     )
-        else:
-            st.info("This model has no control dimensions.")
+                
+                # Update session state if either input changed
+                if number_value != st.session_state[f"value_{word}"]:
+                    st.session_state[f"value_{word}"] = number_value
+                    st.session_state[f"slider_{word}"] = number_value
+                elif slider_value != st.session_state[f"value_{word}"]:
+                    st.session_state[f"value_{word}"] = slider_value
+                    st.session_state[f"number_{word}"] = slider_value
+            else:
+                st.info("This model has no control dimensions.")
 
         ################################################
         # Chat with Steered Model 
         ################################################
-        # Initialize chat history
+        # Initialize chat history if it doesn't exist
         if 'chat_history' not in st.session_state:
             st.session_state.chat_history = []
+        if 'waiting_for_response' not in st.session_state:
+            st.session_state.waiting_for_response = False
+        if 'control_settings' not in st.session_state:
+            st.session_state.control_settings = {}
 
-        # Display chat history
-        for message in st.session_state.chat_history:
-            with st.chat_message(message["role"]):
-                st.markdown(message["content"])
+        # Create a container for the chat history
+        chat_container = st.container()
 
         # Chat input
-        if prompt := st.chat_input("Enter your message..."):
-            # Collect control settings only when sending a message
+        user_input = st.chat_input("Enter your message...")
+
+        if user_input:
+            # Collect control settings when sending a message
             control_settings = {}
             for word in control_dimensions.keys():
-                control_settings[word] = st.session_state[f"slider_{word}"]
+                control_settings[word] = st.session_state[f"value_{word}"]
+            st.session_state.control_settings = control_settings
+            st.session_state.waiting_for_response = True
+            st.session_state.chat_history.append({"role": "user", "content": user_input})
+            st.rerun()
 
-            # Add user message to chat history
-            st.session_state.chat_history.append({"role": "user", "content": prompt})
+        # Display chat history
+        with chat_container:
+            for message in st.session_state.chat_history:
+                with st.chat_message(message["role"]):
+                    st.markdown(message["content"])
             
-            # Display user message
-            with st.chat_message("user"):
-                st.markdown(prompt)
-            
-            # Generate response via the API
+            # Display "..." message if waiting for response
+            if st.session_state.waiting_for_response:
+                with st.chat_message("assistant"):
+                    st.markdown("...")
+
+        # Process the API response
+        if st.session_state.waiting_for_response:
             try:
                 response = steer_api_client.generate_completion(
                     model_id=selected_model_id,
-                    prompt=prompt,
-                    control_settings=control_settings,
+                    prompt=st.session_state.chat_history[-1]["content"],
+                    control_settings=st.session_state.control_settings,
                     settings={"max_new_tokens": 256}
                 )
-                # Parse the 'content' from the response
-                full_response = response.get('content', "No content found in the response.")
+                
+                # Parse the response to get only the content
+                if isinstance(response, dict) and 'content' in response:
+                    full_response = response['content']
+                elif isinstance(response, str):
+                    full_response = response
+                else:
+                    raise ValueError("Unexpected response format from API")
+                
             except Exception as e:
-                st.error(f"Error generating response: {str(e)}")
-                full_response = "An error occurred while generating the response."
+                full_response = f"Error generating response: {str(e)}"
+                st.error(full_response)
 
-            # Display assistant response
-            with st.chat_message("assistant"):
-                st.markdown(full_response)
-            
             # Add assistant response to chat history
             st.session_state.chat_history.append({"role": "assistant", "content": full_response})
-            
-            # Rerun the app to update the chat display
+            st.session_state.waiting_for_response = False
             st.rerun()
 
         # Refresh Chat button
         if st.button("Refresh Chat"):
             st.session_state.chat_history = []
+            st.session_state.waiting_for_response = False
             st.rerun()
 
 ################################################
