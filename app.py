@@ -72,7 +72,6 @@ STEERABLE_MODELS = {}
 # Lock for thread-safe operations on STEERABLE_MODELS
 steerable_models_lock = Lock()
 
-# Comment out or remove these functions
 '''
 def save_models_to_json():
     os.makedirs(MODELS_DIR, exist_ok=True)
@@ -282,7 +281,8 @@ def generate_completion():
             app.logger.warning('Invalid request: missing model or prompt')
             return jsonify({'error': 'Model and prompt are required'}), 400
 
-        logging.info(f"Received request to create generation with model: {model_name_request}\n and prompt: {prompt}")
+        app.logger.info(f"Received request to create generation with model: {model_name_request}\nand prompt: {prompt}")
+        
         # Check if the specified model is ready
         with steerable_models_lock:
             model = STEERABLE_MODELS.get(model_name_request)
@@ -297,14 +297,15 @@ def generate_completion():
         # Log input data
         app.logger.info('*** Completion requested', extra={'model': model_name_request, 'prompt': prompt})
 
-        # Generate the completion response
+        # Generate the completion response, passing control_vectors
         response = generate_completion_response(
             model_name_request,
             prompt,
             control_settings,
             generation_settings,
             app.config['MODEL'],
-            app.config['TOKENIZER']
+            app.config['TOKENIZER'],
+            control_vectors=model.get('control_vectors')
         )
 
         return jsonify(response), 200

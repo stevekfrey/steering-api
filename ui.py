@@ -173,6 +173,7 @@ def display_saved_models():
 # Main Steer Model Page 
 ################################################
 
+# Do not delete the health check
 def api_health_check():
     # Perform health check
     try:
