@@ -53,14 +53,14 @@ app.config['MODEL'], app.config['TOKENIZER'] = load_model()
 app.config['MODEL_NAME'] = BASE_MODEL_NAME
 
 # Load the default prompt type
-DEFAULT_PROMPT_TYPE = os.environ.get('DEFAULT_PROMPT_TYPE', 'emotions')
-if DEFAULT_PROMPT_TYPE not in prompt_filepaths:
+PROMPT_TYPE = os.environ.get('PROMPT_TYPE', 'facts')
+if PROMPT_TYPE not in prompt_filepaths:
     PROMPT_LIST = DEFAULT_PROMPT_LIST
 else: 
     # Load the appropriate prompt list
-    PROMPT_LIST = load_prompt_list(prompt_filepaths[DEFAULT_PROMPT_TYPE])
+    PROMPT_LIST = load_prompt_list(prompt_filepaths[PROMPT_TYPE])
 
-logging.info(f"Loaded prompt list: {PROMPT_LIST}")
+app.logger.info(f"Loaded prompt list: {PROMPT_TYPE}\n{PROMPT_LIST}\n\n")
 
 ################################################
 # In-memory model status dictionary
@@ -133,7 +133,7 @@ def train_steerable_model(model_id, model_label, control_dimensions, prompt_list
             STEERABLE_MODELS[model_id]['control_vectors'] = control_vectors
             STEERABLE_MODELS[model_id]['status'] = 'ready'
 
-        app.logger.info(f"Model {model_id} training completed.\n   Steering vectors created: {control_vectors}")
+        app.logger.info(f"Model {model_id} training completed.\n   Steering vectors created: {control_vectors.keys()}")
 
     except Exception as e:
         # Update status to 'failed' in case of any exception
