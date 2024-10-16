@@ -564,7 +564,7 @@ def steer_model_page():
             st.session_state.waiting_for_response = False
             st.rerun()
 
-        # Refresh Chat button
+        st.markdown('---')
         if st.button("Refresh Chat"):
             st.session_state.chat_history = []
             st.session_state.waiting_for_response = False

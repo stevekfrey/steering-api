@@ -8,6 +8,7 @@ import time
 from threading import Thread, Lock
 import uuid
 import numpy as np
+import random
 
 # Import functions from steering_api_functions.py
 from steering_api_functions import (
@@ -163,7 +164,7 @@ def create_steerable_model_endpoint():
             return jsonify({'error': 'model_label and control_dimensions are required'}), 400
 
         # Generate a unique model_id
-        unique_id = uuid.uuid4().hex[:4]
+        unique_id = f"{random.randint(10, 99)}"  # Generate two random digits
         model_id = f"{model_label}-{unique_id}"
 
         # Create the initial model data
