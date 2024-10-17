@@ -182,6 +182,16 @@ def api_health_check():
     except Exception as e:
         st.error(f"Failed to connect to API: {str(e)}")
 
+def on_value_change(word):
+    # Determine which widget changed and update the shared value
+    number_input_key = f"number_{word}"
+    slider_input_key = f"slider_{word}"
+    if st.session_state[slider_input_key] != st.session_state[f"value_{word}"]:
+        st.session_state[f"value_{word}"] = st.session_state[slider_input_key]
+    elif st.session_state[number_input_key] != st.session_state[f"value_{word}"]:
+        st.session_state[f"value_{word}"] = st.session_state[number_input_key]
+    st.rerun()
+
 def steer_model_page():
     st.title("Steer Model")
 
@@ -463,41 +473,35 @@ def steer_model_page():
             for word in control_dimensions.keys():
                 # Initialize session state for this word if not already done
                 if f"value_{word}" not in st.session_state:
-                    st.session_state[f"value_{word}"] = 0
+                    st.session_state[f"value_{word}"] = 0.0
 
                 col1, col2 = st.columns([1, 5])
-                
+
                 with col1:
-                    number_value = st.number_input(
+                    number_input_key = f"number_{word}"
+                    st.number_input(
                         label=f"{word}",
                         min_value=-5.0,
                         max_value=5.0,
-                        value=float(st.session_state[f"value_{word}"]),  # Convert to float
+                        value=st.session_state[f"value_{word}"],
                         step=0.5,
-                        key=f"number_{word}",
-                        on_change=lambda: setattr(st.session_state, f"value_{word}", st.session_state[f"number_{word}"])
+                        key=number_input_key,
+                        on_change=on_value_change,
+                        args=(word,),  # Pass 'word' as an argument to the callback
                     )
-                
+
                 with col2:
-                    slider_value = st.slider(
+                    slider_input_key = f"slider_{word}"
+                    st.slider(
                         label="",
                         min_value=-5.0,
                         max_value=5.0,
-                        value=float(st.session_state[f"value_{word}"]),  # Convert to float
-                        key=f"slider_{word}", 
+                        value=st.session_state[f"value_{word}"],
                         step=0.5,
-                        on_change=lambda: setattr(st.session_state, f"value_{word}", st.session_state[f"slider_{word}"])
+                        key=slider_input_key,
+                        on_change=on_value_change,
+                        args=(word,),  # Pass 'word' as an argument to the callback
                     )
-                
-                # Update session state if either input changed
-                if number_value != st.session_state[f"value_{word}"]:
-                    st.session_state[f"value_{word}"] = number_value
-                    st.session_state[f"slider_{word}"] = number_value
-                elif slider_value != st.session_state[f"value_{word}"]:
-                    st.session_state[f"value_{word}"] = slider_value
-                    st.session_state[f"number_{word}"] = slider_value
-            else:
-                print(f"No control dimensions found for the selected model. {selected_model_id}")
 
         ################################################
         # Chat with Steered Model 
