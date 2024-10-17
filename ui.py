@@ -184,13 +184,13 @@ def api_health_check():
 
 def on_value_change(word):
     # Determine which widget changed and update the shared value
-    number_input_key = f"number_{word}"
-    slider_input_key = f"slider_{word}"
-    if st.session_state[slider_input_key] != st.session_state[f"value_{word}"]:
-        st.session_state[f"value_{word}"] = st.session_state[slider_input_key]
-    elif st.session_state[number_input_key] != st.session_state[f"value_{word}"]:
-        st.session_state[f"value_{word}"] = st.session_state[number_input_key]
-    st.rerun()
+    number_value_key = f"number_value_{word}"
+    slider_value_key = f"slider_value_{word}"
+    if st.session_state[slider_value_key] != st.session_state[f"value_{word}"]:
+        st.session_state[f"value_{word}"] = st.session_state[slider_value_key]
+    elif st.session_state[number_value_key] != st.session_state[f"value_{word}"]:
+        st.session_state[f"value_{word}"] = st.session_state[number_value_key]
+    
 
 def steer_model_page():
     st.title("Steer Model")
@@ -478,27 +478,27 @@ def steer_model_page():
                 col1, col2 = st.columns([1, 5])
 
                 with col1:
-                    number_input_key = f"number_{word}"
+                    number_value_key = f"number_value_{word}"
                     st.number_input(
                         label=f"{word}",
                         min_value=-5.0,
                         max_value=5.0,
                         value=st.session_state[f"value_{word}"],
                         step=0.5,
-                        key=number_input_key,
+                        key=number_value_key,
                         on_change=on_value_change,
                         args=(word,),  # Pass 'word' as an argument to the callback
                     )
 
                 with col2:
-                    slider_input_key = f"slider_{word}"
+                    slider_value_key = f"slider_value_{word}"
                     st.slider(
                         label="",
                         min_value=-5.0,
                         max_value=5.0,
                         value=st.session_state[f"value_{word}"],
                         step=0.5,
-                        key=slider_input_key,
+                        key=slider_value_key,
                         on_change=on_value_change,
                         args=(word,),  # Pass 'word' as an argument to the callback
                     )
@@ -506,13 +506,15 @@ def steer_model_page():
         ################################################
         # Chat with Steered Model 
         ################################################
-        # Initialize chat history if it doesn't exist
+        # Initialize chat history and other states if they don't exist
         if 'chat_history' not in st.session_state:
             st.session_state.chat_history = []
         if 'waiting_for_response' not in st.session_state:
             st.session_state.waiting_for_response = False
         if 'control_settings' not in st.session_state:
             st.session_state.control_settings = {}
+        # if 'needs_rerun' not in st.session_state:
+        #     st.session_state.needs_rerun = False
 
         # Create a container for the chat history
         chat_container = st.container()
@@ -528,7 +530,7 @@ def steer_model_page():
             st.session_state.control_settings = control_settings
             st.session_state.waiting_for_response = True
             st.session_state.chat_history.append({"role": "user", "content": user_input})
-            st.rerun()
+            st.session_state.needs_rerun = True
 
         # Display chat history
         with chat_container:
@@ -577,13 +579,19 @@ def steer_model_page():
             # Add assistant response to chat history
             st.session_state.chat_history.append({"role": "assistant", "content": full_response_with_settings})
             st.session_state.waiting_for_response = False
-            st.rerun()
+            st.rerun()  # Rerun to display the new message
 
         st.markdown('---')
         if st.button("Refresh Chat"):
             st.session_state.chat_history = []
             st.session_state.waiting_for_response = False
-            st.rerun()
+            st.rerun()  # Rerun the app to refresh the chat
+    
+    # # Check the flag at the end of the script
+    # if st.session_state.get('needs_rerun', False):
+
+    #     st.rerun()
+
 
 ################################################
 # Main 
