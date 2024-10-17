@@ -555,12 +555,23 @@ def steer_model_page():
                 else:
                     raise ValueError("Unexpected response format from API")
                 
+                # Format control settings with smaller font using Markdown
+                control_settings_str = ", ".join([f"{k}: {v}" for k, v in st.session_state.control_settings.items()])
+                control_settings_md = f"{control_settings_str}"
+                
+                # Combine control settings and response
+                full_response_with_settings = f"""
+[{control_settings_md}]
+
+{full_response}
+"""
+                
             except Exception as e:
-                full_response = f"Error generating response: {str(e)}"
-                st.error(full_response)
+                full_response_with_settings = f"Error generating response: {str(e)}"
+                st.error(full_response_with_settings)
 
             # Add assistant response to chat history
-            st.session_state.chat_history.append({"role": "assistant", "content": full_response})
+            st.session_state.chat_history.append({"role": "assistant", "content": full_response_with_settings})
             st.session_state.waiting_for_response = False
             st.rerun()
 
