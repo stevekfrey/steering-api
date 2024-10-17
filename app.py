@@ -9,6 +9,14 @@ from threading import Thread, Lock
 import uuid
 import numpy as np
 import random
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+API_AUTH_TOKEN = os.getenv('API_AUTH_TOKEN')
+
+if not API_AUTH_TOKEN:
+    raise ValueError("API_AUTH_TOKEN is not set in the environment variables")
 
 # Import functions from steering_api_functions.py
 from steering_api_functions import (

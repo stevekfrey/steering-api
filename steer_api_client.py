@@ -5,15 +5,25 @@ from dotenv import load_dotenv
 import time
 import logging
 
+# Load environment variables
 load_dotenv()
 REMOTE_URL = os.getenv('REMOTE_URL')
+API_AUTH_TOKEN = os.getenv('API_AUTH_TOKEN')
 
 if not REMOTE_URL:
     raise ValueError("REMOTE_URL is not set in the environment variables")
 
+if not API_AUTH_TOKEN:
+    raise ValueError("API_AUTH_TOKEN is not set in the environment variables")
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Common headers with Authorization
+HEADERS = {
+    'Authorization': f'Bearer {API_AUTH_TOKEN}'
+}
 
 # Function to create a steerable model
 def create_steerable_model(model_label, control_dimensions, prompt_list=None):
@@ -25,7 +35,7 @@ def create_steerable_model(model_label, control_dimensions, prompt_list=None):
         "prompt_list": prompt_list
     }
     logger.info(f"Sending POST request to {url} with payload: {payload}")
-    response = requests.post(url, json=payload)
+    response = requests.post(url, json=payload, headers=HEADERS)
     if response.status_code == 202:
         model_info = response.json()
         logger.info(f"Received response: {model_info}")
@@ -38,14 +48,14 @@ def create_steerable_model(model_label, control_dimensions, prompt_list=None):
 def list_steerable_models(limit=20, offset=0):
     """List all steerable models."""
     params = {'limit': limit, 'offset': offset}
-    response = requests.get(f"{REMOTE_URL}/steerable-model", params=params)
+    response = requests.get(f"{REMOTE_URL}/steerable-model", params=params, headers=HEADERS)
     response.raise_for_status()
     return response.json()['data']
 
 # Function to get details of a specific steerable model
 def get_steerable_model(model_id):
     """Get details of a specific steerable model."""
-    response = requests.get(f"{REMOTE_URL}/steerable-model/{model_id}")
+    response = requests.get(f"{REMOTE_URL}/steerable-model/{model_id}", headers=HEADERS)
     if response.status_code == 200:
         return response.json()
     else:
@@ -54,7 +64,7 @@ def get_steerable_model(model_id):
 # Function to delete a specific steerable model
 def delete_steerable_model(model_id):
     """Delete a specific steerable model."""
-    response = requests.delete(f"{REMOTE_URL}/steerable-model/{model_id}")
+    response = requests.delete(f"{REMOTE_URL}/steerable-model/{model_id}", headers=HEADERS)
     if response.status_code == 200:
         return response.json()
     else:
@@ -70,14 +80,14 @@ def generate_completion(model_id, prompt, control_settings=None, settings=None):
         "control_settings": control_settings if control_settings is not None else {},
         "settings": settings if settings is not None else {"max_new_tokens": 186}
     }
-    response = requests.post(f"{REMOTE_URL}/completions", json=payload)
+    response = requests.post(f"{REMOTE_URL}/completions", json=payload, headers=HEADERS)
     response.raise_for_status()
     return response.json()
 
 def health_check():
     """Check the health of the API by hitting the root endpoint."""
     try:
-        response = requests.get(f"{REMOTE_URL}/")
+        response = requests.get(f"{REMOTE_URL}/", headers=HEADERS)
         if response.status_code == 200:
             return response.text
         else:
@@ -86,7 +96,7 @@ def health_check():
         raise Exception(f"Health check request failed: {e}")
 def get_model_status(model_id):
     url = f"{REMOTE_URL}/steerable-model/{model_id}/status"
-    response = requests.get(url)
+    response = requests.get(url, headers=HEADERS)
     response.raise_for_status()
     return response.json()
 
