@@ -1,10 +1,11 @@
 import requests
 import json
+from steer_api_client import get_remote_url
 
 BASE_MODEL_NAME = "aifeifei798/DarkIdol-Llama-3.1-8B-Instruct-1.2-Uncensored"
 
 BASE_URL = 'http://localhost:5000'
-REMOTE_URL = "http://10.19.90.157:5000"
+REMOTE_URL = get_remote_url()
 CURRENT_URL = REMOTE_URL
 
 # Sample data for creating a steerable model

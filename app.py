@@ -7,6 +7,16 @@ import json
 import time
 from threading import Thread, Lock
 import uuid
+import numpy as np
+import random
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+API_AUTH_TOKEN = os.getenv('API_AUTH_TOKEN')
+
+if not API_AUTH_TOKEN:
+    raise ValueError("API_AUTH_TOKEN is not set in the environment variables")
 
 # Import functions from steering_api_functions.py
 from steering_api_functions import (
@@ -35,8 +45,13 @@ app = Flask(__name__)
 formatter = json_log_formatter.JSONFormatter()
 json_handler = logging.StreamHandler()
 json_handler.setFormatter(formatter)
+
 app.logger.addHandler(json_handler)
 app.logger.setLevel(logging.INFO)
+
+# Add these constants near the top of the file
+MODELS_DIR = 'steerable_models'
+MODELS_FILE = os.path.join(MODELS_DIR, 'steerable_models.json')
 
 ################################################
 # Load model
@@ -47,14 +62,14 @@ app.config['MODEL'], app.config['TOKENIZER'] = load_model()
 app.config['MODEL_NAME'] = BASE_MODEL_NAME
 
 # Load the default prompt type
-DEFAULT_PROMPT_TYPE = os.environ.get('DEFAULT_PROMPT_TYPE', 'emotions')
-if DEFAULT_PROMPT_TYPE not in prompt_filepaths:
+PROMPT_TYPE = os.environ.get('PROMPT_TYPE', 'facts')
+if PROMPT_TYPE not in prompt_filepaths:
     PROMPT_LIST = DEFAULT_PROMPT_LIST
 else: 
     # Load the appropriate prompt list
-    PROMPT_LIST = load_prompt_list(prompt_filepaths[DEFAULT_PROMPT_TYPE])
+    PROMPT_LIST = load_prompt_list(prompt_filepaths[PROMPT_TYPE])
 
-logging.info(f"Loaded prompt list: {PROMPT_LIST}")
+app.logger.info(f"Loaded prompt list: {PROMPT_TYPE}\n{PROMPT_LIST}\n\n")
 
 ################################################
 # In-memory model status dictionary
@@ -65,6 +80,36 @@ STEERABLE_MODELS = {}
 
 # Lock for thread-safe operations on STEERABLE_MODELS
 steerable_models_lock = Lock()
+
+'''
+def save_models_to_json():
+    os.makedirs(MODELS_DIR, exist_ok=True)
+    serializable_models = {}
+    for model_id, model_data in STEERABLE_MODELS.items():
+        serializable_model = model_data.copy()
+        if 'control_vectors' in serializable_model:
+            serializable_model['control_vectors'] = {
+                trait: vector.tolist() if isinstance(vector, np.ndarray) else vector
+                for trait, vector in serializable_model['control_vectors'].items()
+            }
+        serializable_models[model_id] = serializable_model
+    
+    with open(MODELS_FILE, 'w') as f:
+        json.dump(serializable_models, f)
+
+def load_models_from_json():
+    if os.path.exists(MODELS_FILE):
+        with open(MODELS_FILE, 'r') as f:
+            loaded_models = json.load(f)
+        for model_id, model_data in loaded_models.items():
+            if 'control_vectors' in model_data:
+                model_data['control_vectors'] = {
+                    trait: np.array(vector) if isinstance(vector, list) else vector
+                    for trait, vector in model_data['control_vectors'].items()
+                }
+        return loaded_models
+    return {}
+'''
 
 ################################################
 # Background Model Training Function
@@ -97,7 +142,7 @@ def train_steerable_model(model_id, model_label, control_dimensions, prompt_list
             STEERABLE_MODELS[model_id]['control_vectors'] = control_vectors
             STEERABLE_MODELS[model_id]['status'] = 'ready'
 
-        app.logger.info(f"Model {model_id} training completed.\n   Steering vectors created: {control_vectors}")
+        app.logger.info(f"Model {model_id} training completed.\n   Steering vectors created: {control_vectors.keys()}")
 
     except Exception as e:
         # Update status to 'failed' in case of any exception
@@ -127,7 +172,7 @@ def create_steerable_model_endpoint():
             return jsonify({'error': 'model_label and control_dimensions are required'}), 400
 
         # Generate a unique model_id
-        unique_id = uuid.uuid4().hex[:4]
+        unique_id = f"{random.randint(10, 99)}"  # Generate two random digits
         model_id = f"{model_label}-{unique_id}"
 
         # Create the initial model data
@@ -245,7 +290,8 @@ def generate_completion():
             app.logger.warning('Invalid request: missing model or prompt')
             return jsonify({'error': 'Model and prompt are required'}), 400
 
-        logging.info(f"Received request to create generation with model: {model_name_request}\n and prompt: {prompt}")
+        app.logger.info(f"Received request to create generation with model: {model_name_request}\nand prompt: {prompt}")
+        
         # Check if the specified model is ready
         with steerable_models_lock:
             model = STEERABLE_MODELS.get(model_name_request)
@@ -260,14 +306,15 @@ def generate_completion():
         # Log input data
         app.logger.info('*** Completion requested', extra={'model': model_name_request, 'prompt': prompt})
 
-        # Generate the completion response
+        # Generate the completion response, passing control_vectors
         response = generate_completion_response(
             model_name_request,
             prompt,
             control_settings,
             generation_settings,
             app.config['MODEL'],
-            app.config['TOKENIZER']
+            app.config['TOKENIZER'],
+            control_vectors=model.get('control_vectors')
         )
 
         return jsonify(response), 200

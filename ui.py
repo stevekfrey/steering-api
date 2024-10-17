@@ -5,23 +5,16 @@ from dotenv import load_dotenv
 from litellm import completion
 from datetime import datetime  # Added import for timestamp
 from streamlit_test_suite import test_suite_page
+import time
 import steer_api_client  # Importing the API client
 from config import DEFAULT_NUM_CONTROL_DIMENSIONS, DEFAULT_NUM_SYNONYMS
-from steer_templates import DEFAULT_PROMPT_LIST, SIMPLE_PROMPT_LIST
-import logging
-
-# Setup logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+from steer_templates import DEFAULT_PROMPT_LIST, SIMPLE_PROMPT_LIST, MODEL_LOCAL_SAVE_PATH
 
 # Load environment variables
 load_dotenv()
 
-# Initialize session state
-if 'pending_models' not in st.session_state:
-    st.session_state['pending_models'] = []
-if 'saved_models' not in st.session_state:
-    st.session_state['saved_models'] = []
+
+# Initialize session state for current_model if not present
 if 'current_model' not in st.session_state:
     st.session_state['current_model'] = None
 
@@ -60,6 +53,15 @@ def generate_positive_negative_examples(word):
         return None
 
 def parse_control_dimensions(control_dimensions_dict):
+    """
+    Parses a dictionary containing control dimensions.
+
+    Args:
+        control_dimensions_dict (dict): The dictionary containing control dimensions.
+
+    Returns:
+        tuple: A tuple containing two lists: positive_examples and negative_examples.
+    """
     positive_examples = []
     negative_examples = []
 
@@ -72,15 +74,6 @@ def parse_control_dimensions(control_dimensions_dict):
 
     return positive_examples, negative_examples
 
-def check_api_health():
-    try:
-        response = steer_api_client.health_check()
-        if response:
-            st.success(f"Successfully connected to Steer API: {response}")
-        else:
-            st.warning("API health check returned an unexpected response.")
-    except Exception as e:
-        st.error(f"API health check failed: {str(e)}")
 
 ################################################
 # Save and Display Models  
@@ -95,91 +88,99 @@ def select_model(model_id):
     """
     st.session_state['current_model'] = model_id
 
-def load_saved_models():
+# Add this function to handle local file operations
+def load_saved_models_from_file():
+    # Create the model_data directory if it doesn't exist
+    os.makedirs('model_data', exist_ok=True)
+    
+    # Load the models from the file in the model_data directory
     try:
-        with open('model_data/saved_models.json', 'r') as f:
-            models = json.load(f)
-            st.session_state['saved_models'] = models
-            return models
+        with open(MODEL_LOCAL_SAVE_PATH, 'r') as f:
+            return json.load(f)
     except FileNotFoundError:
         return []
 
-def save_models(models):
+def save_models_to_file(models):
+    # Create the model_data directory if it doesn't exist
     os.makedirs('model_data', exist_ok=True)
-    with open('model_data/saved_models.json', 'w') as f:
-        json.dump(models, f, indent=2)
-    st.session_state['saved_models'] = models
-
-def display_models(pending_models, ready_models):
-    """
-    Display both pending and ready models.
-    """
-    if pending_models:
-        st.markdown("### Pending Models")
-        for model in pending_models:
-            cols = st.columns([0.15, 1])  # First column ~15% width
-            with cols[0]:
-                st.write("⏳ Pending...")
-            with cols[1]:
-                model_label = model.get('model_label', 'Unnamed Model')
-                st.markdown(f"**Model:** {model_label}  **ID:** `{model['id']}`")
-                st.write(f"Status: {model['status'].capitalize()}")
-                # Display control dimensions if needed...
     
-    if ready_models:
-        st.markdown("### Ready Models")
-        for model in ready_models:
-            cols = st.columns([0.15, 1])  # First column ~15% width for the SELECT button
+    # Save the models to a file in the model_data directory
+    with open(MODEL_LOCAL_SAVE_PATH, 'w') as f:
+        json.dump(models, f)
 
-            with cols[0]:
-                # Determine if this model is currently selected
-                is_selected = st.session_state.get('current_model') == model['id']
 
-                # Define button label based on selection
-                button_label = "✅ Current Model" if is_selected else "🔲 Select model"
+def display_saved_models():
+    """
+    Displays the saved models with SELECT buttons for selection
+    and properly formatted Control Dimensions by fetching from local JSON.
+    """
+    saved_models = load_saved_models_from_file()
 
-                # The 'disabled' parameter visually indicates selection by disabling the button
-                st.button(
-                    button_label,
-                    key=f"select_{model['id']}",
-                    on_click=select_model,
-                    args=(model['id'],),
-                    disabled=is_selected,  # Disable if selected
-                )
 
-            with cols[1]:
-                model_label = model.get('model_label', 'Unnamed Model')
-                # Expand the expander if the model is selected
-                with st.expander(f"### Model:   **{model_label}** (ID: `{model['id']}`)", expanded=is_selected):
-                    control_dimensions = model.get('control_dimensions', {})
+    if not saved_models:
+        st.write("No models saved yet.")
+        return
 
-                    if control_dimensions:
-                        for word, examples in control_dimensions.items():
-                            st.markdown(f"**{word}**")
+    for model in saved_models:
+        cols = st.columns([0.15, 1])  # First column ~15% width for the SELECT button
 
-                            positive_examples = examples.get('positive_examples', [])
-                            negative_examples = examples.get('negative_examples', [])
+        with cols[0]:
+            # Determine if this model is currently selected
+            is_selected = st.session_state.get('current_model') == model['id']
 
-                            if positive_examples:
-                                st.markdown(f"**(+):** {', '.join(positive_examples)}")
-                            else:
-                                st.markdown("**(+):** _None provided_")
+            # Define button label based on selection
+            button_label = "✅ Current Model" if is_selected else "🔲 Select model"
 
-                            if negative_examples:
-                                st.markdown(f"**(-):** {', '.join(negative_examples)}")
-                            else:
-                                st.markdown("**(-):** _None provided_")
-                            st.markdown("---")  # Separator between control words
-                    else:
-                        st.markdown("**No control dimensions provided for this model.**")
+            # The 'disabled' parameter visually indicates selection by disabling the button
+            st.button(
+                button_label,
+                key=f"select_{model['id']}",
+                on_click=select_model,
+                args=(model['id'],),
+                disabled=is_selected,  # Disable if selected
+            )
 
-                    # Highlight if this model is currently selected
-                    if is_selected:
-                        st.success("**This model is currently selected.**")
+        with cols[1]:
+            # Expand the expander if the model is selected
+            with st.expander(f"### Model:   **{model['id']}**", expanded=is_selected): # Model Name 
+                control_dimensions = model.get('control_dimensions', {})
+
+                if control_dimensions:
+                    for word, examples in control_dimensions.items():
+                        st.markdown(f"**{word}**")
+
+                        positive_examples = examples.get('positive_examples', [])
+                        negative_examples = examples.get('negative_examples', [])
+
+                        if positive_examples:
+                            st.markdown(f"**(+):** {', '.join(positive_examples)}")
+                        else:
+                            st.markdown("**(+):** _None provided_")
+
+                        if negative_examples:
+                            st.markdown(f"**(-):** {', '.join(negative_examples)}")
+                        else:
+                            st.markdown("**(-):** _None provided_")
+                        st.markdown("---")  # Separator between control words
+                else:
+                    st.markdown("**No control dimensions provided for this model.**")
+
+                # Highlight if this model is currently selected
+                if is_selected:
+                    st.success("**This model is currently selected.**")
 
 ################################################
 # Main Steer Model Page 
 ################################################
+
+# Do not delete the health check
+def api_health_check():
+    # Perform health check
+    try:
+        response = steer_api_client.health_check()
+        st.success(f"Successfully connected to API: {response}")
+    except Exception as e:
+        st.error(f"Failed to connect to API: {str(e)}")
 
 def steer_model_page():
     st.title("Steer Model")
@@ -187,6 +188,8 @@ def steer_model_page():
     ################################################
     # Create Model 
     ################################################
+
+    api_health_check()
 
     st.markdown("---")
 
@@ -209,6 +212,8 @@ def steer_model_page():
     
     # Create dynamic rows for control dimensions
     for i in range(st.session_state.num_control_dimensions):
+        # if f'word_{i}' not in st.session_state:
+            # st.session_state[f'word_{i}'] = 'empty'
         if f'control_dimensions_{i}' not in st.session_state:
             default_json = json.dumps({
                 "positive_examples": ["example1", "example2"],
@@ -260,13 +265,17 @@ def steer_model_page():
     col1, col2, col3 = st.columns([1, 1, 2])
     with col1:
         if st.button("➕ Add Word"):
+            if 'num_control_dimensions' not in st.session_state:
+                st.session_state.num_control_dimensions = DEFAULT_NUM_CONTROL_DIMENSIONS  # Default value
             st.session_state.num_control_dimensions += 1
-            st.experimental_rerun()
+            st.rerun()
     with col2:
         if st.button("➖ Remove Word"):
+            if 'num_control_dimensions' not in st.session_state:
+                st.session_state.num_control_dimensions = DEFAULT_NUM_CONTROL_DIMENSIONS  # Default value
             if st.session_state.num_control_dimensions > 1:  # Prevent removing all words
                 st.session_state.num_control_dimensions -= 1
-                st.experimental_rerun()
+                st.rerun()
 
     # Text box to input the model name
     st.markdown("#### Name this model")
@@ -277,11 +286,11 @@ def steer_model_page():
         if not model_name:
             st.error("Please enter a model name.")
         else:
+            # Display success message after starting the training
             control_dimensions = {}
-
             for i in range(st.session_state.num_control_dimensions):
                 control_word = st.session_state.get(f'word_{i}', '').strip()
-                control_input = st.session_state.get(f'control_dimensions_text_{i}', '').strip()
+                control_input = st.session_state.get(f'control_dimensions_{i}', '').strip()
 
                 if control_word and control_input:
                     try:
@@ -298,13 +307,12 @@ def steer_model_page():
 
             if control_dimensions:
                 # Prepare the data payload for the API
-                api_control_dimensions = {
-                    word: {
+                api_control_dimensions = {}
+                for word, examples in control_dimensions.items():
+                    api_control_dimensions[word] = {
                         "positive_examples": examples.get("positive_examples", []),
                         "negative_examples": examples.get("negative_examples", [])
                     }
-                    for word, examples in control_dimensions.items()
-                }
 
                 try:
                     # Call the API to create a steerable model
@@ -315,56 +323,111 @@ def steer_model_page():
                     )
 
                     model_id = response['id']
-                    status = response.get('status', 'pending')  # Default to 'pending' if status is not provided
 
-                    st.success(f"Model '{model_name}' submitted. ID: {model_id}")
+                    # Display success message without waiting for model to be ready
+                    st.success(f"Started training model: {model_name} (ID: {model_id})")
+                    st.session_state['current_model'] = model_id  # Set as current model
 
-                    # Add the new model to session_state
-                    st.session_state['pending_models'].append({
-                        'id': model_id,
-                        'model_label': model_name,
-                        'control_dimensions': api_control_dimensions,
-                        'status': status
-                    })
                 except Exception as e:
                     st.error(f"Failed to create model: {str(e)}")
             else:
                 st.warning("No valid control dimensions provided. Model not saved.")
 
     ################################################
-    # Pull Trained Models Button 
+    # Pull Completed Models
     ################################################
 
-    # "Pull Trained Models" Button
-    st.markdown("---")  # Separator
-    st.markdown("### Models")
+    st.markdown("---")
+    st.header("Manage Models")
 
-    if st.button("Pull Trained Models"):
+    if 'models_list' not in st.session_state:
+        st.session_state['models_list'] = []
+
+    if st.button("⬇️  Pull Completed Models"):
         try:
-            # Fetch models from the API
-            models = steer_api_client.list_steerable_models()
-            pending_models = []
-            ready_models = []
-
-            for model in models:
-                status = model.get('status', 'unknown')
-                if status == 'ready':
-                    ready_models.append(model)
-                else:
-                    pending_models.append(model)
-
-            # Update session_state
-            st.session_state['pending_models'] = pending_models
-            st.session_state['saved_models'] = ready_models
-
-            # Save ready models locally
-            save_models(ready_models)
-            st.success("Models updated.")
+            # Retrieve the list of models from the API
+            models_list = steer_api_client.list_steerable_models()
+            st.session_state['models_list'] = models_list  # Store in session state
+            st.success("Successfully retrieved the latest models.")
         except Exception as e:
-            st.error(f"Failed to pull models: {str(e)}")
+            st.error(f"Failed to retrieve models: {str(e)}")
 
-    # Display models
-    display_models(st.session_state.get('pending_models', []), st.session_state.get('saved_models', []))
+    # Load models from session state
+    models_list = st.session_state['models_list']
+
+    # Separate models into pending and ready
+    pending_models = [model for model in models_list if model.get('status') == 'pending']
+    ready_models = [model for model in models_list if model.get('status') == 'ready']
+
+    ################################################
+    # Display Pending Models
+    ################################################
+
+    if pending_models:
+        st.markdown("### ⏳ Pending Models")
+        for model in pending_models:
+            with st.expander(f"Model: **{model['id']}** - **{model.get('label', 'N/A')}**"):
+                st.write(f"**Status:** {model.get('status')}")
+                st.write(f"**Created At:** {model.get('created_at')}")
+    else:
+        st.markdown("### ⏳ Pending Models")
+        st.write("No pending models.")
+
+    ################################################
+    # Display Saved Models
+    ################################################
+
+    if ready_models:
+        st.markdown("### ☀️ Saved Models")
+        for model in ready_models:
+            cols = st.columns([0.15, 1])  # First column ~15% width for the SELECT button
+
+            with cols[0]:
+                # Determine if this model is currently selected
+                is_selected = st.session_state.get('current_model') == model['id']
+
+                # Define button label based on selection
+                button_label = "✅ Current Model" if is_selected else "🔲 Select model"
+
+                # The 'disabled' parameter visually indicates selection by disabling the button
+                st.button(
+                    button_label,
+                    key=f"select_{model['id']}",
+                    on_click=select_model,
+                    args=(model['id'],),
+                    disabled=is_selected,  # Disable if selected
+                )
+
+            with cols[1]:
+                with st.expander(f"Model: **{model['id']}** - **{model.get('label', 'N/A')}**", expanded=is_selected):
+                    control_dimensions = model.get('control_dimensions', {})
+
+                    if control_dimensions:
+                        for word, examples in control_dimensions.items():
+                            st.markdown(f"**{word}**")
+
+                            positive_examples = examples.get('positive_examples', [])
+                            negative_examples = examples.get('negative_examples', [])
+
+                            if positive_examples:
+                                st.markdown(f"**(+):** {', '.join(positive_examples)}")
+                            else:
+                                st.markdown("**(+):** _None provided_")
+
+                            if negative_examples:
+                                st.markdown(f"**(-):** {', '.join(negative_examples)}")
+                            else:
+                                st.markdown("**(-):** _None provided_")
+                            st.markdown("---")  # Separator between control words
+                    else:
+                        st.markdown("**No control dimensions provided for this model.**")
+
+                    # Highlight if this model is currently selected
+                    if is_selected:
+                        st.success("**This model is currently selected.**")
+    else:
+        st.markdown("### ☀️ Saved Models")
+        st.write("No saved models available.")
 
     ################################################
     # Prepare to Generate 
@@ -372,10 +435,10 @@ def steer_model_page():
 
     # Third section: Generate
     st.markdown("---")
-    st.markdown("### Generate")
+    st.markdown("### 💬 Generate")
 
     if st.session_state.get('current_model') is None:
-        st.warning("Please select a model from the 'Ready Models' section above.")
+        st.warning("Please select a model from the 'Saved Models' section above.")
     else:
         # Display the selected model ID
         selected_model_id = st.session_state['current_model']
@@ -392,46 +455,49 @@ def steer_model_page():
             return
 
         # Sliders for control dimensions
-        control_settings = {}
         control_dimensions = selected_model.get('control_dimensions', {})
+        print('control_dimensions: ', control_dimensions)
 
-        ################################################
-        # Adjust Control Dimensions 
-        ################################################
-        
         if control_dimensions:
             st.markdown("#### Adjust Control Dimensions")
             for word in control_dimensions.keys():
+                # Initialize session state for this word if not already done
+                if f"value_{word}" not in st.session_state:
+                    st.session_state[f"value_{word}"] = 0
+
                 col1, col2 = st.columns([1, 5])
                 
                 with col1:
                     number_value = st.number_input(
                         label=f"{word}",
-                        min_value=-10,
-                        max_value=10,
-                        value=st.session_state.get(f"value_{word}", 0),
-                        step=1,
-                        key=f"number_{word}"
+                        min_value=-5.0,
+                        max_value=5.0,
+                        value=float(st.session_state[f"value_{word}"]),  # Convert to float
+                        step=0.5,
+                        key=f"number_{word}",
+                        on_change=lambda: setattr(st.session_state, f"value_{word}", st.session_state[f"number_{word}"])
                     )
                 
                 with col2:
                     slider_value = st.slider(
-                        label=f"",
-                        min_value=-10,
-                        max_value=10,
-                        value=st.session_state.get(f"value_{word}", 0),
-                        key=f"slider_{word}"
+                        label="",
+                        min_value=-5.0,
+                        max_value=5.0,
+                        value=float(st.session_state[f"value_{word}"]),  # Convert to float
+                        key=f"slider_{word}", 
+                        step=0.5,
+                        on_change=lambda: setattr(st.session_state, f"value_{word}", st.session_state[f"slider_{word}"])
                     )
                 
-                # Update the shared value in session state
-                if slider_value != st.session_state.get(f"value_{word}"):
-                    st.session_state[f"value_{word}"] = slider_value
-                elif number_value != st.session_state.get(f"value_{word}"):
+                # Update session state if either input changed
+                if number_value != st.session_state[f"value_{word}"]:
                     st.session_state[f"value_{word}"] = number_value
-                
-                control_settings[word] = st.session_state[f"value_{word}"]
-        else:
-            st.info("This model has no control dimensions.")
+                    st.session_state[f"slider_{word}"] = number_value
+                elif slider_value != st.session_state[f"value_{word}"]:
+                    st.session_state[f"value_{word}"] = slider_value
+                    st.session_state[f"number_{word}"] = slider_value
+            else:
+                print(f"No control dimensions found for the selected model. {selected_model_id}")
 
         ################################################
         # Chat with Steered Model 
@@ -441,6 +507,8 @@ def steer_model_page():
             st.session_state.chat_history = []
         if 'waiting_for_response' not in st.session_state:
             st.session_state.waiting_for_response = False
+        if 'control_settings' not in st.session_state:
+            st.session_state.control_settings = {}
 
         # Create a container for the chat history
         chat_container = st.container()
@@ -449,6 +517,11 @@ def steer_model_page():
         user_input = st.chat_input("Enter your message...")
 
         if user_input:
+            # Collect control settings when sending a message
+            control_settings = {}
+            for word in control_dimensions.keys():
+                control_settings[word] = st.session_state[f"value_{word}"]
+            st.session_state.control_settings = control_settings
             st.session_state.waiting_for_response = True
             st.session_state.chat_history.append({"role": "user", "content": user_input})
             st.rerun()
@@ -470,7 +543,7 @@ def steer_model_page():
                 response = steer_api_client.generate_completion(
                     model_id=selected_model_id,
                     prompt=st.session_state.chat_history[-1]["content"],
-                    control_settings=control_settings,
+                    control_settings=st.session_state.control_settings,
                     settings={"max_new_tokens": 256}
                 )
                 
@@ -482,16 +555,27 @@ def steer_model_page():
                 else:
                     raise ValueError("Unexpected response format from API")
                 
+                # Format control settings with smaller font using Markdown
+                control_settings_str = ", ".join([f"{k}: {v}" for k, v in st.session_state.control_settings.items()])
+                control_settings_md = f"{control_settings_str}"
+                
+                # Combine control settings and response
+                full_response_with_settings = f"""
+[{control_settings_md}]
+
+{full_response}
+"""
+                
             except Exception as e:
-                full_response = f"Error generating response: {str(e)}"
-                st.error(full_response)
+                full_response_with_settings = f"Error generating response: {str(e)}"
+                st.error(full_response_with_settings)
 
             # Add assistant response to chat history
-            st.session_state.chat_history.append({"role": "assistant", "content": full_response})
+            st.session_state.chat_history.append({"role": "assistant", "content": full_response_with_settings})
             st.session_state.waiting_for_response = False
             st.rerun()
 
-        # Refresh Chat button
+        st.markdown('---')
         if st.button("Refresh Chat"):
             st.session_state.chat_history = []
             st.session_state.waiting_for_response = False
@@ -500,25 +584,8 @@ def steer_model_page():
 ################################################
 # Main 
 ################################################
-def initialize_session_state():
-    if 'pending_models' not in st.session_state:
-        st.session_state['pending_models'] = []
-    if 'saved_models' not in st.session_state:
-        st.session_state['saved_models'] = []
-    if 'current_model' not in st.session_state:
-        st.session_state['current_model'] = None
-    if 'models_updated' not in st.session_state:
-        st.session_state['models_updated'] = False
-
 def main():
-    initialize_session_state()r
-    
     st.set_page_config(page_title="Steerable Models App", layout="wide")
-
-    # Perform API health check on first load
-    if 'api_health_checked' not in st.session_state:
-        check_api_health()
-        st.session_state['api_health_checked'] = True
 
     # Create tabs
     tab1, tab2, tab3, tab4 = st.tabs(["Steer Model", "API Documentation", "Research Notebook", "Test Suite"])

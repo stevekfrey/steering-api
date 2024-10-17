@@ -1,0 +1,93 @@
+[
+    {
+      "custom_model_name": "honest-40",
+      "control_settings": {
+        "honest": -3.0
+      },
+      "num_samples": 220
+    },
+    {
+      "custom_model_name": "honest-40",
+      "control_settings": {
+        "honest": -2.5
+      },
+      "num_samples": 220
+    },
+    {
+      "custom_model_name": "honest-40",
+      "control_settings": {
+        "honest": -2.0
+      },
+      "num_samples": 220
+    },
+    {
+      "custom_model_name": "honest-40",
+      "control_settings": {
+        "honest": -1.5
+      },
+      "num_samples": 220
+    },
+    {
+      "custom_model_name": "honest-40",
+      "control_settings": {
+        "honest": -1.0
+      },
+      "num_samples": 220
+    },
+    {
+      "custom_model_name": "honest-40",
+      "control_settings": {
+        "honest": -0.5
+      },
+      "num_samples": 220
+    },
+    {
+      "custom_model_name": "honest-40",
+      "control_settings": {
+        "honest": 0.0
+      },
+      "num_samples": 220
+    },
+    {
+      "custom_model_name": "honest-40",
+      "control_settings": {
+        "honest": 0.5
+      },
+      "num_samples": 220
+    },
+    {
+      "custom_model_name": "honest-40",
+      "control_settings": {
+        "honest": 1.0
+      },
+      "num_samples": 220
+    },
+    {
+      "custom_model_name": "honest-40",
+      "control_settings": {
+        "honest": 1.5
+      },
+      "num_samples": 220
+    },
+    {
+      "custom_model_name": "honest-40",
+      "control_settings": {
+        "honest": 2.0
+      },
+      "num_samples": 220
+    },
+    {
+      "custom_model_name": "honest-40",
+      "control_settings": {
+        "honest": 2.5
+      },
+      "num_samples": 220
+    },
+    {
+      "custom_model_name": "honest-40",
+      "control_settings": {
+        "honest": 3.0
+      },
+      "num_samples": 220
+    }
+  ]

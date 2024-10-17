@@ -38,3 +38,26 @@ upload to server:
 
 `gunicorn app:app --workers 2 --threads 1 --bind 0.0.0.0:5000`
 
+on Runpod: 
+```
+pip install --ignore-installed blinker
+pip install -r requirements.txt
+python app.py
+```
+
+on Lambdalabs: 
+
+```
+EXPORT API_AUTH_TOKEN=xyz
+
+# private IP: 
+ip -4 -br addr show | grep -Eo '(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)'
+ip -4 -br addr show
+
+# all IP ports: 
+sudo apt install -y nmap
+nmap -Pn INSTANCE-IP-ADDRESS #replace with IP address from cloud dashboard 
+
+
+
+```

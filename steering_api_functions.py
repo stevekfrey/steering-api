@@ -1,20 +1,22 @@
+import os
 import uuid
 import datetime
 import warnings
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
-from repeng import ControlVector, ControlModel, DatasetEntry
 import numpy as np
 import logging
-from steer_templates import DEFAULT_TEMPLATE, DEFAULT_PROMPT_LIST, user_tag, asst_tag, BASE_MODEL_NAME
 import json
 import threading
 from enum import Enum
-import os
 from dotenv import load_dotenv
 from huggingface_hub import login
 from typing import Callable, Any, Dict
 from tqdm import tqdm
+import random
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from repeng import ControlVector, ControlModel, DatasetEntry
+
+from steer_templates import DEFAULT_TEMPLATE, DEFAULT_PROMPT_LIST, user_tag, asst_tag, BASE_MODEL_NAME
 
 # Initialize a logger for this module
 logger = logging.getLogger(__name__)
@@ -296,7 +298,7 @@ def generate_completion_response(
             start=matching_zero_vector
         )
 
-        print('vector_mix:', vector_mix)
+        # print('vector_mix:', vector_mix)
         print('control_settings:', control_settings)
         # print('control_vectors:', control_vectors)
 
@@ -345,7 +347,7 @@ def generate_completion_response(
         'content': formatted_response,
     }
 
-    logger.info('Completion generated', extra={'response_id': response['id']})
+    logger.info('Completion generated', extra={'response_model_id': response['model_id']})
     return response
 
 ################################################
@@ -474,7 +476,7 @@ def create_steerable_model_function(
         raise
 
 def create_steerable_model_async(model_label, control_dimensions, prompt_list, model, tokenizer, template=DEFAULT_TEMPLATE):
-    unique_id = uuid.uuid4().hex[:4]
+    unique_id = f"{random.randint(10, 99)}"  
     steering_model_full_id = f"{model_label}-{unique_id}"
     
     model_status[steering_model_full_id] = ModelStatus.CREATING

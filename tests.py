@@ -4,11 +4,12 @@ import json
 from dotenv import load_dotenv
 import os
 from steer_templates import user_tag, asst_tag
+from steer_api_client import get_remote_url
 
 load_dotenv()
 
 BASE_URL = 'http://localhost:5000'
-REMOTE_URL = os.getenv('REMOTE_URL')
+REMOTE_URL = get_remote_url()
 if not REMOTE_URL:
     raise Exception("REMOTE_URL environment variable not set")
 
