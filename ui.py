@@ -193,7 +193,16 @@ def on_value_change(word):
     
 
 def steer_model_page():
-    st.title("Steer Model")
+    # Create two columns for the image and title
+    col1, col2 = st.columns([1, 14])
+
+    # Display the image in the first column
+    with col1:
+        st.image('images/icon_steer_square.jpg', width=100)  # Adjust width as needed
+
+    # Display the title in the second column
+    with col2:
+        st.title("Steer Model")
 
     ################################################
     # Create Model 
