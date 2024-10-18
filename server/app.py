@@ -51,27 +51,33 @@ json_handler.setFormatter(formatter)
 app.logger.addHandler(json_handler)
 app.logger.setLevel(logging.INFO)
 
-# Add these constants near the top of the file
-MODELS_DIR = 'steerable_models'
-MODELS_FILE = os.path.join(MODELS_DIR, 'steerable_models.json')
+# MODELS_DIR = 'steerable_models'
+# MODELS_FILE = os.path.join(MODELS_DIR, 'steerable_models.json')
 
 ################################################
-# Load model
+# Load Training Prompts 
 ################################################
-
 # Load the model at startup and store in app config
 app.config['MODEL'], app.config['TOKENIZER'] = load_model()
 app.config['MODEL_NAME'] = BASE_MODEL_NAME
 
-# Load the default prompt type
-PROMPT_TYPE = os.environ.get('PROMPT_TYPE', 'facts')
-if PROMPT_TYPE not in prompt_filepaths:
-    PROMPT_LIST = DEFAULT_PROMPT_LIST
-else: 
-    # Load the appropriate prompt list
-    PROMPT_LIST = load_prompt_list(prompt_filepaths[PROMPT_TYPE])
+# Load and concatenate prompt lists for specified types
+PROMPT_TYPES = ["facts", "emotions"]
+ALL_PROMPTS = []
+for prompt_type in PROMPT_TYPES:
+    if prompt_type in prompt_filepaths:
+        prompts = load_prompt_list(prompt_filepaths[prompt_type])
+        ALL_PROMPTS.extend(prompts)
+    else:
+        app.logger.warning(f"Prompt type '{prompt_type}' not found in prompt_filepaths")
 
-app.logger.info(f"Loaded prompt list: {PROMPT_TYPE}\n{PROMPT_LIST}\n\n")
+# If no prompts were loaded, use the default prompt list
+if not ALL_PROMPTS:
+    ALL_PROMPTS = DEFAULT_PROMPT_LIST
+
+PROMPT_LIST = ALL_PROMPTS
+
+app.logger.info(f"Loaded combined prompt list:\n{PROMPT_LIST}\n\n")
 
 ################################################
 # In-memory model status dictionary
@@ -83,39 +89,32 @@ STEERABLE_MODELS = {}
 # Lock for thread-safe operations on STEERABLE_MODELS
 steerable_models_lock = Lock()
 
-'''
-def save_models_to_json():
-    os.makedirs(MODELS_DIR, exist_ok=True)
-    serializable_models = {}
-    for model_id, model_data in STEERABLE_MODELS.items():
-        serializable_model = model_data.copy()
-        if 'control_vectors' in serializable_model:
-            serializable_model['control_vectors'] = {
-                trait: vector.tolist() if isinstance(vector, np.ndarray) else vector
-                for trait, vector in serializable_model['control_vectors'].items()
-            }
-        serializable_models[model_id] = serializable_model
-    
-    with open(MODELS_FILE, 'w') as f:
-        json.dump(serializable_models, f)
-
-def load_models_from_json():
-    if os.path.exists(MODELS_FILE):
-        with open(MODELS_FILE, 'r') as f:
-            loaded_models = json.load(f)
-        for model_id, model_data in loaded_models.items():
-            if 'control_vectors' in model_data:
-                model_data['control_vectors'] = {
-                    trait: np.array(vector) if isinstance(vector, list) else vector
-                    for trait, vector in model_data['control_vectors'].items()
-                }
-        return loaded_models
-    return {}
-'''
-
 ################################################
 # Background Model Training Function
 ################################################
+
+def control_vector_to_dict(control_vector):
+    return {
+        'model_type': control_vector.model_type,
+        'directions': {
+            layer: direction.tolist()
+            for layer, direction in control_vector.directions.items()
+        }
+    }
+
+def save_control_vectors(model_id, control_vectors):
+    SAVED_VECTOR_DIR = 'saved_steering_vectors'
+    os.makedirs(SAVED_VECTOR_DIR, exist_ok=True)
+    
+    file_path = os.path.join(SAVED_VECTOR_DIR, f'{model_id}_vectors.json')
+    
+    serializable_vectors = {
+        trait: control_vector_to_dict(vector)
+        for trait, vector in control_vectors.items()
+    }
+    
+    with open(file_path, 'w') as f:
+        json.dump(serializable_vectors, f, indent=2)
 
 def train_steerable_model(model_id, model_label, control_dimensions, prompt_list):
     try:
@@ -143,6 +142,13 @@ def train_steerable_model(model_id, model_label, control_dimensions, prompt_list
         with steerable_models_lock:
             STEERABLE_MODELS[model_id]['control_vectors'] = control_vectors
             STEERABLE_MODELS[model_id]['status'] = 'ready'
+
+
+        print (control_vectors)
+        test_vector = control_vector_to_dict(control_vectors['missionary'])
+        print(json.dumps(test_vector, indent=2))
+        save_control_vectors(model_id, control_vectors)
+
 
         app.logger.info(f"Model {model_id} training completed.\n   Steering vectors created: {control_vectors.keys()}")
 

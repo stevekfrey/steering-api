@@ -10,7 +10,7 @@ import argparse
 import time
 import os
 
-from steer_api_client import (
+from client.steer_api_client import (
     generate_completion,
     get_steerable_model
 )
