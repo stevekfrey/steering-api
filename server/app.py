@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, abort
 import logging
 import traceback
 import json_log_formatter
@@ -10,6 +10,8 @@ import uuid
 import numpy as np
 import random
 from dotenv import load_dotenv
+from functools import wraps
+from werkzeug.exceptions import BadRequest, HTTPException
 
 # Load environment variables
 load_dotenv()
@@ -154,12 +156,23 @@ def train_steerable_model(model_id, model_label, control_dimensions, prompt_list
 # Main Endpoints
 ################################################
 
+def auth_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        token = request.headers.get('Authorization')
+        if not token or token != f"Bearer {API_AUTH_TOKEN}":
+            abort(401)  # Unauthorized
+        return f(*args, **kwargs)
+    return decorated_function
+
 @app.route('/', methods=['GET'])
+@auth_required
 def index():
     return jsonify({"status": "success", "message": "Hello from Steer API"}), 200
 
 # Endpoint to create a steerable model
 @app.route('/steerable-model', methods=['POST'])
+@auth_required
 def create_steerable_model_endpoint():
     try:
         data = request.get_json()
@@ -206,6 +219,7 @@ def create_steerable_model_endpoint():
 
 # Endpoint to list steerable models
 @app.route('/steerable-model', methods=['GET'])
+@auth_required
 def list_models():
     limit = request.args.get('limit', default=10, type=int)
     offset = request.args.get('offset', default=0, type=int)
@@ -228,6 +242,7 @@ def list_models():
 
 # Endpoint to retrieve a specific steerable model
 @app.route('/steerable-model/<model_id>', methods=['GET'])
+@auth_required
 def get_model(model_id):
     with steerable_models_lock:
         model = STEERABLE_MODELS.get(model_id)
@@ -249,6 +264,7 @@ def get_model(model_id):
 
 # Endpoint to delete a steerable model
 @app.route('/steerable-model/<model_id>', methods=['DELETE'])
+@auth_required
 def delete_model(model_id):
     with steerable_models_lock:
         if model_id in STEERABLE_MODELS:
@@ -267,6 +283,7 @@ def delete_model(model_id):
 
 # Endpoint to check the status of a model
 @app.route('/steerable-model/<model_id>/status', methods=['GET'])
+@auth_required
 def check_model_status(model_id):
     with steerable_models_lock:
         model = STEERABLE_MODELS.get(model_id)
@@ -278,6 +295,7 @@ def check_model_status(model_id):
     return jsonify(status), 200
 
 @app.route('/completions', methods=['POST'])
+@auth_required
 def generate_completion():
     try:
         data = request.get_json()
@@ -323,15 +341,55 @@ def generate_completion():
         app.logger.error('Error in generate_completion', extra={'error': str(e), 'traceback': traceback.format_exc()})
         return jsonify({'error': 'An internal error occurred', 'details': str(e)}), 500
 
-# Global error handler
+##############################################
+# Request validation and error handling
+##############################################
+
+@app.before_request
+def validate_request():
+    try:
+        # Check for valid HTTP version
+        if request.environ.get('SERVER_PROTOCOL') not in ('HTTP/1.1', 'HTTP/1.0'):
+            raise ValueError("Invalid HTTP version")
+        
+        # Validate content type for POST requests
+        if request.method == 'POST' and request.headers.get('Content-Type') != 'application/json':
+            raise ValueError("Invalid Content-Type")
+        
+        # Add more validation as needed
+    except Exception as e:
+        app.logger.warning(f"Invalid request: {str(e)}", extra={
+            'remote_addr': request.remote_addr,
+            'method': request.method,
+            'path': request.path,
+            'headers': dict(request.headers)
+        })
+        # Silently drop the request
+        return None
+
+@app.errorhandler(HTTPException)
+def handle_http_exception(e):
+    app.logger.error(f"HTTP exception: {str(e)}", extra={
+        'remote_addr': request.remote_addr,
+        'method': request.method,
+        'path': request.path,
+        'headers': dict(request.headers)
+    })
+    # Silently drop the request
+    return None
+
 @app.errorhandler(Exception)
 def handle_exception(e):
-    app.logger.error('Unhandled exception', extra={'error': str(e), 'traceback': traceback.format_exc()})
-    response = {
-        'error': 'An internal error occurred',
-        'details': str(e)
-    }
-    return jsonify(response), 500
+    app.logger.error('Unhandled exception', extra={
+        'error': str(e),
+        'traceback': traceback.format_exc(),
+        'remote_addr': request.remote_addr,
+        'method': request.method,
+        'path': request.path,
+        'headers': dict(request.headers)
+    })
+    # Silently drop the request
+    return None
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, threaded=True)

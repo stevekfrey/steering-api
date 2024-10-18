@@ -4,11 +4,16 @@ import os
 from dotenv import load_dotenv
 from litellm import completion
 from datetime import datetime  # Added import for timestamp
-from streamlit_test_suite import test_suite_page
 import time
-import steer_api_client  # Importing the API client
-from config import DEFAULT_NUM_CONTROL_DIMENSIONS, DEFAULT_NUM_SYNONYMS
-from steer_templates import DEFAULT_PROMPT_LIST, SIMPLE_PROMPT_LIST, MODEL_LOCAL_SAVE_PATH
+import sys
+import os
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from streamlit_test_suite import test_suite_page
+
+import client.steer_api_client as steer_api_client  # Importing the API client
+from client.config import DEFAULT_NUM_CONTROL_DIMENSIONS, DEFAULT_NUM_SYNONYMS
+from server.steer_templates import DEFAULT_PROMPT_LIST, SIMPLE_PROMPT_LIST, MODEL_LOCAL_SAVE_PATH
 
 # Load environment variables
 load_dotenv()
@@ -178,7 +183,7 @@ def api_health_check():
     # Perform health check
     try:
         response = steer_api_client.health_check()
-        st.success(f"Successfully connected to API: {response}")
+        st.success(f"Successfully connected to API: {response['message']}")
     except Exception as e:
         st.error(f"Failed to connect to API: {str(e)}")
 
@@ -198,7 +203,7 @@ def steer_model_page():
 
     # Display the image in the first column
     with col1:
-        st.image('images/icon_steer_square.jpg', width=100)  # Adjust width as needed
+        st.image('client/images/icon_steer_square.jpg', width=100)  # Adjust width as needed
 
     # Display the title in the second column
     with col2:

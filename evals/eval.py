@@ -70,6 +70,7 @@ def evaluate_tqa(
 
     for q, ans_list, label_list in tqdm(zip(questions, answers, labels), total=len(questions)):
         try:
+            print (f"trying prompt {q} with control settings {control_settings}")
             response = generate_completion(
                 model_id=model_id,
                 prompt=q,
@@ -157,21 +158,6 @@ def main(custom_model_name: str, num_samples: int = None, control_settings: Dict
     random_acc = np.mean([1/len(l) for l in labels])
     print(f"Random Accuracy: {random_acc:.4f}")
 
-    # Evaluate without control
-    print("Evaluating without control settings...")
-    results_no_control = evaluate_tqa(
-        model_id=custom_model_name,
-        questions=questions,
-        answers=answers,
-        labels=labels,
-        control_settings={},
-        generation_settings={"max_new_tokens": 256}
-    )
-    print(f"Standard Zero-Shot Accuracy: {results_no_control['accuracy']:.4f}")
-
-    # Throttling between evaluations
-    time.sleep(THROTTLE_MS / 1000.0)
-
     # Evaluate with control settings
     print("Evaluating with control settings...")
     results_with_control = evaluate_tqa(
@@ -186,9 +172,11 @@ def main(custom_model_name: str, num_samples: int = None, control_settings: Dict
 
     # Save results to a JSON file
     results = {
+        "control_settings": control_settings,
         "random_accuracy": random_acc,
-        "standard_zero_shot": results_no_control,
+        # "standard_zero_shot": results_no_control,
         "control_settings_evaluation": results_with_control
+        
     }
     control_settings_str = format_control_settings(control_settings)
     results_filename = f"eval_results/{custom_model_name}_{control_settings_str}_evaluation_results_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.json"
