@@ -12,3 +12,4 @@ python-dotenv
 pandas
 tqdm
 gunicorn
+litellm 
