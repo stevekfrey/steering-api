@@ -1,0 +1,9 @@
+[
+    {
+      "custom_model_name": "honest-27",
+      "control_settings": {
+        "honest": 3.0
+      },
+      "num_samples": 100
+    }
+  ]

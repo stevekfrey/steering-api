@@ -6,13 +6,19 @@ from litellm import completion
 from datetime import datetime  # Added import for timestamp
 from streamlit_test_suite import test_suite_page
 import time
-import steer_api_client  # Importing the API client
-from config import DEFAULT_NUM_CONTROL_DIMENSIONS, DEFAULT_NUM_SYNONYMS
-from steer_templates import DEFAULT_PROMPT_LIST, SIMPLE_PROMPT_LIST, MODEL_LOCAL_SAVE_PATH
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+import client.steer_api_client as steer_api_client  # Importing the API client
+from client.config import DEFAULT_NUM_CONTROL_DIMENSIONS, DEFAULT_NUM_SYNONYMS
+from server.steer_templates import DEFAULT_PROMPT_LIST, SIMPLE_PROMPT_LIST, MODEL_LOCAL_SAVE_PATH
+import nbformat
+from nbconvert import MarkdownExporter
 
 # Load environment variables
 load_dotenv()
-
 
 # Initialize session state for current_model if not present
 if 'current_model' not in st.session_state:
@@ -178,7 +184,7 @@ def api_health_check():
     # Perform health check
     try:
         response = steer_api_client.health_check()
-        st.success(f"Successfully connected to API: {response}")
+        st.success(f"Successfully connected to API: {response['message']}")
     except Exception as e:
         st.error(f"Failed to connect to API: {str(e)}")
 
@@ -193,7 +199,16 @@ def on_value_change(word):
     
 
 def steer_model_page():
-    st.title("Steer Model")
+    # Create two columns for the image and title
+    col1, col2 = st.columns([1, 14])
+
+    # Display the image in the first column
+    with col1:
+        st.image('client/images/icon_steer_square.jpg', width=100)  # Adjust width as needed
+
+    # Display the title in the second column
+    with col2:
+        st.title("Steer API")
 
     ################################################
     # Create Model 
@@ -203,7 +218,7 @@ def steer_model_page():
 
     st.markdown("---")
 
-    st.header("Create Steerable Model")
+    st.header("Create Steering Vectors")
 
     # Initialize session state for dynamic control dimensions
     if 'num_control_dimensions' not in st.session_state:
@@ -252,7 +267,7 @@ def steer_model_page():
                             if isinstance(result, dict):
                                 result = json.dumps(result)
                             st.session_state[f'control_dimensions_{i}'] = result
-                            st.success(f"Examples generated for control word {i+1}.")
+                            st.success(f"Examples generated for '{st.session_state[f'word_{i}']}'.")
                         except (TypeError, json.JSONDecodeError) as e:
                             st.error(f"Failed to parse generated examples: {str(e)}")
         with row_cols[2]:
@@ -288,7 +303,7 @@ def steer_model_page():
                 st.rerun()
 
     # Text box to input the model name
-    st.markdown("#### Name this model")
+    st.markdown("#### Name this vector set")
     model_name = st.text_input("", key="model_name", label_visibility='hidden' )
 
     # "Create Model" button
@@ -338,17 +353,19 @@ def steer_model_page():
                     st.success(f"Started training model: {model_name} (ID: {model_id})")
                     st.session_state['current_model'] = model_id  # Set as current model
 
+                    
+
                 except Exception as e:
                     st.error(f"Failed to create model: {str(e)}")
             else:
-                st.warning("No valid control dimensions provided. Model not saved.")
+                st.warning("No valid control dimensions provided. Vectors not saved.")
 
     ################################################
     # Pull Completed Models
     ################################################
 
     st.markdown("---")
-    st.header("Manage Models")
+    st.header("Manage Steering Vectors")
 
     if 'models_list' not in st.session_state:
         st.session_state['models_list'] = []
@@ -374,13 +391,13 @@ def steer_model_page():
     ################################################
 
     if pending_models:
-        st.markdown("### ⏳ Pending Models")
+        st.markdown("### ⏳ Pending Vectors")
         for model in pending_models:
             with st.expander(f"Model: **{model['id']}** - **{model.get('label', 'N/A')}**"):
                 st.write(f"**Status:** {model.get('status')}")
                 st.write(f"**Created At:** {model.get('created_at')}")
     else:
-        st.markdown("### ⏳ Pending Models")
+        st.markdown("### ⏳ Pending Vectors")
         st.write("No pending models.")
 
     ################################################
@@ -388,7 +405,7 @@ def steer_model_page():
     ################################################
 
     if ready_models:
-        st.markdown("### ☀️ Saved Models")
+        st.markdown("### ☀️ Saved Vectors")
         for model in ready_models:
             cols = st.columns([0.15, 1])  # First column ~15% width for the SELECT button
 
@@ -397,7 +414,7 @@ def steer_model_page():
                 is_selected = st.session_state.get('current_model') == model['id']
 
                 # Define button label based on selection
-                button_label = "✅ Current Model" if is_selected else "🔲 Select model"
+                button_label = "✅ Current Vectors" if is_selected else "🔲 Select vectors"
 
                 # The 'disabled' parameter visually indicates selection by disabling the button
                 st.button(
@@ -409,7 +426,7 @@ def steer_model_page():
                 )
 
             with cols[1]:
-                with st.expander(f"Model: **{model['id']}** - **{model.get('label', 'N/A')}**", expanded=is_selected):
+                with st.expander(f"Vectors: **{model['id']}** - **{model.get('label', 'N/A')}**", expanded=is_selected):
                     control_dimensions = model.get('control_dimensions', {})
 
                     if control_dimensions:
@@ -430,14 +447,14 @@ def steer_model_page():
                                 st.markdown("**(-):** _None provided_")
                             st.markdown("---")  # Separator between control words
                     else:
-                        st.markdown("**No control dimensions provided for this model.**")
+                        st.markdown("**No control dimensions provided for this vector set.**")
 
                     # Highlight if this model is currently selected
                     if is_selected:
-                        st.success("**This model is currently selected.**")
+                        st.success("**This vector set is currently selected.**")
     else:
-        st.markdown("### ☀️ Saved Models")
-        st.write("No saved models available.")
+        st.markdown("### ☀️ Saved Vectors")
+        st.write("No saved vectors available.")
 
     ################################################
     # Prepare to Generate 
@@ -448,7 +465,7 @@ def steer_model_page():
     st.markdown("### 💬 Generate")
 
     if st.session_state.get('current_model') is None:
-        st.warning("Please select a model from the 'Saved Models' section above.")
+        st.warning("Please select a vector set from the 'Saved Vectors' section above.")
     else:
         # Display the selected model ID
         selected_model_id = st.session_state['current_model']
@@ -458,10 +475,10 @@ def steer_model_page():
         try:
             selected_model = steer_api_client.get_steerable_model(selected_model_id)
             if not selected_model:
-                st.error("Selected model not found in saved models.")
+                st.error("Selected vector not found in saved vectors.")
                 return
         except Exception as e:
-            st.error(f"Error loading model details: {str(e)}")
+            st.error(f"Error loading vector details: {str(e)}")
             return
 
         # Sliders for control dimensions
@@ -587,11 +604,44 @@ def steer_model_page():
             st.session_state.waiting_for_response = False
             st.rerun()  # Rerun the app to refresh the chat
     
-    # # Check the flag at the end of the script
-    # if st.session_state.get('needs_rerun', False):
+    if st.button("🤠", key="cowboy_balloons_button"):
+        st.balloons()
+################################################
+# API Docs page 
+################################################
 
-    #     st.rerun()
+def load_api_docs():
+    """Load and return the content of api_docs.md from the parent directory."""
+    parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    api_docs_path = os.path.join(parent_dir, 'api_docs.md')
+    try:
+        with open(api_docs_path, 'r') as file:
+            return file.read()
+    except FileNotFoundError:
+        return "API documentation file not found."
+    except Exception as e:
+        return f"Error loading API documentation: {str(e)}"
+    
 
+################################################
+# Research Notebook page 
+################################################
+
+def load_jupyter_notebook():
+    """Load and return the content of the Jupyter notebook as markdown."""
+    notebook_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'quickstart', 'samples.ipynb')
+    try:
+        with open(notebook_path, 'r', encoding='utf-8') as file:
+            notebook = nbformat.read(file, as_version=4)
+        
+        # Convert notebook to markdown
+        exporter = MarkdownExporter()
+        markdown, _ = exporter.from_notebook_node(notebook)
+        return markdown
+    except FileNotFoundError:
+        return "Jupyter notebook file not found."
+    except Exception as e:
+        return f"Error loading Jupyter notebook: {str(e)}"
 
 ################################################
 # Main 
@@ -600,19 +650,23 @@ def main():
     st.set_page_config(page_title="Steerable Models App", layout="wide")
 
     # Create tabs
-    tab1, tab2, tab3, tab4 = st.tabs(["Steer Model", "API Documentation", "Research Notebook", "Test Suite"])
+    tab1, tab2, tab3, tab4 = st.tabs(["Steer API", "API Documentation", "Research Notebook", "Test Suite"])
     
     with tab1:
         steer_model_page()
     
     with tab2:
-        st.write("API Documentation")
+        api_docs_content = load_api_docs()
+        REMOTE_URL = os.getenv('REMOTE_URL')
+        st.markdown(f"#### API SERVER URL: `{REMOTE_URL}`")
+        st.markdown(api_docs_content)
     
     with tab3:
-        st.write("Research Notebook")
+        notebook_content = load_jupyter_notebook()
+        st.markdown(notebook_content)
     
-    with tab4:
-        test_suite_page()
+    # with tab4:
+    #     test_suite_page()
 
 if __name__ == "__main__":
     main()

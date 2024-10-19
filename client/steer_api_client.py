@@ -4,11 +4,13 @@ import os
 from dotenv import load_dotenv
 import time
 import logging
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
 
 # Load environment variables
 load_dotenv()
@@ -50,8 +52,6 @@ def get_remote_url():
         logger.info(f"REMOTE_URL updated to: {REMOTE_URL}")
     else:
         logger.warning("REMOTE_URL not updated due to missing POD_ID or INTERNAL_PORT")
-
-    REMOTE_URL = RUNPOD_TEMPLATE.format(POD_ID="", INTERNAL_PORT="")
 
     return REMOTE_URL
 
@@ -120,11 +120,13 @@ def health_check():
     try:
         response = requests.get(f"{REMOTE_URL}/", headers=HEADERS)
         if response.status_code == 200:
-            return response.text
+            return response.json()
         else:
             raise Exception(f"Health check failed with status code {response.status_code}: {response.text}")
     except requests.exceptions.RequestException as e:
         raise Exception(f"Health check request failed: {e}")
+    
+
 def get_model_status(model_id):
     url = f"{REMOTE_URL}/steerable-model/{model_id}/status"
     response = requests.get(url, headers=HEADERS)

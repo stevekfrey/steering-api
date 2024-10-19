@@ -4,7 +4,7 @@ import json
 from dotenv import load_dotenv
 import os
 from steer_templates import user_tag, asst_tag
-from steer_api_client import get_remote_url
+from client.steer_api_client import get_remote_url
 
 load_dotenv()
 

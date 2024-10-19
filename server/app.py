@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, abort
 import logging
 import traceback
 import json_log_formatter
@@ -10,6 +10,8 @@ import uuid
 import numpy as np
 import random
 from dotenv import load_dotenv
+from functools import wraps
+from werkzeug.exceptions import BadRequest, HTTPException
 
 # Load environment variables
 load_dotenv()
@@ -49,27 +51,33 @@ json_handler.setFormatter(formatter)
 app.logger.addHandler(json_handler)
 app.logger.setLevel(logging.INFO)
 
-# Add these constants near the top of the file
-MODELS_DIR = 'steerable_models'
-MODELS_FILE = os.path.join(MODELS_DIR, 'steerable_models.json')
+# MODELS_DIR = 'steerable_models'
+# MODELS_FILE = os.path.join(MODELS_DIR, 'steerable_models.json')
 
 ################################################
-# Load model
+# Load Training Prompts 
 ################################################
-
 # Load the model at startup and store in app config
 app.config['MODEL'], app.config['TOKENIZER'] = load_model()
 app.config['MODEL_NAME'] = BASE_MODEL_NAME
 
-# Load the default prompt type
-PROMPT_TYPE = os.environ.get('PROMPT_TYPE', 'facts')
-if PROMPT_TYPE not in prompt_filepaths:
-    PROMPT_LIST = DEFAULT_PROMPT_LIST
-else: 
-    # Load the appropriate prompt list
-    PROMPT_LIST = load_prompt_list(prompt_filepaths[PROMPT_TYPE])
+# Load and concatenate prompt lists for specified types
+PROMPT_TYPES = ["facts", "emotions"]
+ALL_PROMPTS = []
+for prompt_type in PROMPT_TYPES:
+    if prompt_type in prompt_filepaths:
+        prompts = load_prompt_list(prompt_filepaths[prompt_type])
+        ALL_PROMPTS.extend(prompts)
+    else:
+        app.logger.warning(f"Prompt type '{prompt_type}' not found in prompt_filepaths")
 
-app.logger.info(f"Loaded prompt list: {PROMPT_TYPE}\n{PROMPT_LIST}\n\n")
+# If no prompts were loaded, use the default prompt list
+if not ALL_PROMPTS:
+    ALL_PROMPTS = DEFAULT_PROMPT_LIST
+
+PROMPT_LIST = ALL_PROMPTS
+
+app.logger.info(f"Loaded combined prompt list:\n{PROMPT_LIST}\n\n")
 
 ################################################
 # In-memory model status dictionary
@@ -81,39 +89,32 @@ STEERABLE_MODELS = {}
 # Lock for thread-safe operations on STEERABLE_MODELS
 steerable_models_lock = Lock()
 
-'''
-def save_models_to_json():
-    os.makedirs(MODELS_DIR, exist_ok=True)
-    serializable_models = {}
-    for model_id, model_data in STEERABLE_MODELS.items():
-        serializable_model = model_data.copy()
-        if 'control_vectors' in serializable_model:
-            serializable_model['control_vectors'] = {
-                trait: vector.tolist() if isinstance(vector, np.ndarray) else vector
-                for trait, vector in serializable_model['control_vectors'].items()
-            }
-        serializable_models[model_id] = serializable_model
-    
-    with open(MODELS_FILE, 'w') as f:
-        json.dump(serializable_models, f)
-
-def load_models_from_json():
-    if os.path.exists(MODELS_FILE):
-        with open(MODELS_FILE, 'r') as f:
-            loaded_models = json.load(f)
-        for model_id, model_data in loaded_models.items():
-            if 'control_vectors' in model_data:
-                model_data['control_vectors'] = {
-                    trait: np.array(vector) if isinstance(vector, list) else vector
-                    for trait, vector in model_data['control_vectors'].items()
-                }
-        return loaded_models
-    return {}
-'''
-
 ################################################
 # Background Model Training Function
 ################################################
+
+def control_vector_to_dict(control_vector):
+    return {
+        'model_type': control_vector.model_type,
+        'directions': {
+            layer: direction.tolist()
+            for layer, direction in control_vector.directions.items()
+        }
+    }
+
+def save_control_vectors(model_id, control_vectors):
+    SAVED_VECTOR_DIR = 'saved_steering_vectors'
+    os.makedirs(SAVED_VECTOR_DIR, exist_ok=True)
+    
+    file_path = os.path.join(SAVED_VECTOR_DIR, f'{model_id}_vectors.json')
+    
+    serializable_vectors = {
+        trait: control_vector_to_dict(vector)
+        for trait, vector in control_vectors.items()
+    }
+    
+    with open(file_path, 'w') as f:
+        json.dump(serializable_vectors, f, indent=2)
 
 def train_steerable_model(model_id, model_label, control_dimensions, prompt_list):
     try:
@@ -142,6 +143,8 @@ def train_steerable_model(model_id, model_label, control_dimensions, prompt_list
             STEERABLE_MODELS[model_id]['control_vectors'] = control_vectors
             STEERABLE_MODELS[model_id]['status'] = 'ready'
 
+        save_control_vectors(model_id, control_vectors)
+
         app.logger.info(f"Model {model_id} training completed.\n   Steering vectors created: {control_vectors.keys()}")
 
     except Exception as e:
@@ -154,12 +157,23 @@ def train_steerable_model(model_id, model_label, control_dimensions, prompt_list
 # Main Endpoints
 ################################################
 
+def auth_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        token = request.headers.get('Authorization')
+        if not token or token != f"Bearer {API_AUTH_TOKEN}":
+            abort(401)  # Unauthorized
+        return f(*args, **kwargs)
+    return decorated_function
+
 @app.route('/', methods=['GET'])
+@auth_required
 def index():
     return jsonify({"status": "success", "message": "Hello from Steer API"}), 200
 
 # Endpoint to create a steerable model
 @app.route('/steerable-model', methods=['POST'])
+@auth_required
 def create_steerable_model_endpoint():
     try:
         data = request.get_json()
@@ -206,6 +220,7 @@ def create_steerable_model_endpoint():
 
 # Endpoint to list steerable models
 @app.route('/steerable-model', methods=['GET'])
+@auth_required
 def list_models():
     limit = request.args.get('limit', default=10, type=int)
     offset = request.args.get('offset', default=0, type=int)
@@ -228,6 +243,7 @@ def list_models():
 
 # Endpoint to retrieve a specific steerable model
 @app.route('/steerable-model/<model_id>', methods=['GET'])
+@auth_required
 def get_model(model_id):
     with steerable_models_lock:
         model = STEERABLE_MODELS.get(model_id)
@@ -249,6 +265,7 @@ def get_model(model_id):
 
 # Endpoint to delete a steerable model
 @app.route('/steerable-model/<model_id>', methods=['DELETE'])
+@auth_required
 def delete_model(model_id):
     with steerable_models_lock:
         if model_id in STEERABLE_MODELS:
@@ -267,6 +284,7 @@ def delete_model(model_id):
 
 # Endpoint to check the status of a model
 @app.route('/steerable-model/<model_id>/status', methods=['GET'])
+@auth_required
 def check_model_status(model_id):
     with steerable_models_lock:
         model = STEERABLE_MODELS.get(model_id)
@@ -278,6 +296,7 @@ def check_model_status(model_id):
     return jsonify(status), 200
 
 @app.route('/completions', methods=['POST'])
+@auth_required
 def generate_completion():
     try:
         data = request.get_json()
@@ -323,15 +342,55 @@ def generate_completion():
         app.logger.error('Error in generate_completion', extra={'error': str(e), 'traceback': traceback.format_exc()})
         return jsonify({'error': 'An internal error occurred', 'details': str(e)}), 500
 
-# Global error handler
+##############################################
+# Request validation and error handling
+##############################################
+
+@app.before_request
+def validate_request():
+    try:
+        # Check for valid HTTP version
+        if request.environ.get('SERVER_PROTOCOL') not in ('HTTP/1.1', 'HTTP/1.0'):
+            raise ValueError("Invalid HTTP version")
+        
+        # Validate content type for POST requests
+        if request.method == 'POST' and request.headers.get('Content-Type') != 'application/json':
+            raise ValueError("Invalid Content-Type")
+        
+        # Add more validation as needed
+    except Exception as e:
+        app.logger.warning(f"Invalid request: {str(e)}", extra={
+            'remote_addr': request.remote_addr,
+            'method': request.method,
+            'path': request.path,
+            'headers': dict(request.headers)
+        })
+        # Silently drop the request
+        return None
+
+@app.errorhandler(HTTPException)
+def handle_http_exception(e):
+    app.logger.error(f"HTTP exception: {str(e)}", extra={
+        'remote_addr': request.remote_addr,
+        'method': request.method,
+        'path': request.path,
+        'headers': dict(request.headers)
+    })
+    # Silently drop the request
+    return None
+
 @app.errorhandler(Exception)
 def handle_exception(e):
-    app.logger.error('Unhandled exception', extra={'error': str(e), 'traceback': traceback.format_exc()})
-    response = {
-        'error': 'An internal error occurred',
-        'details': str(e)
-    }
-    return jsonify(response), 500
+    app.logger.error('Unhandled exception', extra={
+        'error': str(e),
+        'traceback': traceback.format_exc(),
+        'remote_addr': request.remote_addr,
+        'method': request.method,
+        'path': request.path,
+        'headers': dict(request.headers)
+    })
+    # Silently drop the request
+    return None
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, threaded=True)
