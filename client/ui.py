@@ -87,12 +87,15 @@ def parse_control_dimensions(control_dimensions_dict):
 
 def select_model(model_id):
     """
-    Callback function to set the selected model in session_state.
+    Callback function to set the selected model in session_state and refresh the chat.
 
     Args:
         model_id (str): The ID of the model to select.
     """
     st.session_state['current_model'] = model_id
+    st.session_state.chat_history = []
+    st.session_state.waiting_for_response = False
+    st.rerun()
 
 # Add this function to handle local file operations
 def load_saved_models_from_file():
@@ -237,8 +240,6 @@ def steer_model_page():
     
     # Create dynamic rows for control dimensions
     for i in range(st.session_state.num_control_dimensions):
-        # if f'word_{i}' not in st.session_state:
-            # st.session_state[f'word_{i}'] = 'empty'
         if f'control_dimensions_{i}' not in st.session_state:
             default_json = json.dumps({
                 "positive_examples": ["example1", "example2"],
@@ -280,7 +281,7 @@ def steer_model_page():
             st.text_area(
                 label=f"Control Dimensions {i+1}",
                 placeholder=placeholder_text,
-                key=f"control_dimensions_text_{i}",
+                key=f"control_dimensions_{i}",
                 height=200,
                 label_visibility="collapsed",
                 value=st.session_state[f'control_dimensions_{i}']

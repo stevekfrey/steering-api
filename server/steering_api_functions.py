@@ -15,6 +15,10 @@ from tqdm import tqdm
 import random
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from repeng import ControlVector, ControlModel, DatasetEntry
+import pandas as pd
+from typing import List, Dict
+from repeng import ControlVector, DatasetEntry, RepReadingPipeline
+from transformers import pipeline
 
 from steer_templates import DEFAULT_TEMPLATE, DEFAULT_PROMPT_LIST, user_tag, asst_tag, BASE_MODEL_NAME
 
@@ -499,3 +503,292 @@ def create_steerable_model_async(model_label, control_dimensions, prompt_list, m
 
 def get_model_status(model_id):
     return {"id": model_id, "status": model_status.get(model_id, ModelStatus.FAILED).value}
+
+################################################
+# Honesty Dataset-specific Functions 
+################################################
+
+def honesty_function_dataset(
+    data_path: str,
+    tokenizer,
+    user_tag: str = "",
+    assistant_tag: str = "",
+    seed: int = 0
+) -> Dict[str, Dict[str, List]]:
+    """
+    Processes data to create training and testing datasets based on honesty.
+
+    Returns:
+        dict: Contains 'train' and 'test' datasets with 'data' and 'labels'.
+    """
+    # Setting the seed for reproducibility
+    random.seed(seed)
+
+    # Load the data
+    df = pd.read_csv(data_path)
+    true_statements = df[df['label'] == 1]['statement'].values.tolist()
+    false_statements = df[df['label'] == 0]['statement'].values.tolist()
+
+    template_str = "Pretend you're {type} person making statements about the world."
+    honest_statements = []
+    untruthful_statements = []
+
+    # Process statements
+    for statement in true_statements:
+        tokens = tokenizer.tokenize(statement)
+        for idx in range(1, len(tokens) - 5):
+            truncated_tokens = tokens[:idx]
+            truncated_statement = tokenizer.convert_tokens_to_string(truncated_tokens)
+
+            honest_statements.append(f"{user_tag} {template_str.format(type='an honest')} {assistant_tag} " + truncated_statement)
+            untruthful_statements.append(f"{user_tag} {template_str.format(type='an untruthful')} {assistant_tag} " + truncated_statement)
+
+    # Create training data
+    ntrain = 512
+    combined_data = [[honest, untruthful] for honest, untruthful in zip(honest_statements, untruthful_statements)]
+    train_data = combined_data[:ntrain]
+
+    train_labels = []
+    for d in train_data:
+        true_s = d[0]
+        random.shuffle(d)
+        train_labels.append([s == true_s for s in d])
+
+    train_data_flat = [item for sublist in train_data for item in sublist]
+
+    # Create test data
+    reshaped_data = np.array([[honest, untruthful] for honest, untruthful in zip(honest_statements[:-1], untruthful_statements[1:])]).flatten()
+    test_data = reshaped_data[ntrain:ntrain*2].tolist()
+
+    return {
+        'train': {'data': train_data_flat, 'labels': train_labels},
+        'test': {'data': test_data, 'labels': [[1, 0]] * len(test_data)}
+    }
+
+def create_dataset_and_train_vector_honesty(data_path, model, tokenizer, user_tag="", assistant_tag=""):
+    """
+    Creates a dataset from the honesty function and trains a control vector.
+    """
+    logger.info("Creating honesty dataset...")
+    dataset = honesty_function_dataset(data_path, tokenizer, user_tag, assistant_tag)
+    train_data = dataset['train']['data']
+    train_labels = dataset['train']['labels']
+
+    logger.info(f"Training data size: {len(train_data)}")
+
+    # Convert labels to the format expected by ControlVector.train()
+    # Assuming that ControlVector.train can accept labels parameter
+
+    # Initialize the representation reading pipeline
+    rep_token = -1  # Token at which to extract representations
+    hidden_layers = list(range(-1, -model.model.config.num_hidden_layers, -1))
+    n_difference = 1  # Number of principal components to extract
+    direction_method = 'pca'
+
+    rep_reading_pipeline = RepReadingPipeline(model=model.model, tokenizer=tokenizer)
+
+    # Get directions (control vectors) that differentiate honest and untruthful statements
+    control_vector = rep_reading_pipeline.get_directions(
+        train_data,
+        rep_token=rep_token,
+        hidden_layers=hidden_layers,
+        n_difference=n_difference,
+        train_labels=train_labels,
+        direction_method=direction_method,
+        batch_size=32,
+    )
+
+    logger.info("Control vector training completed.")
+
+    return control_vector
+
+def create_steerable_model_honesty(model_label, data_path, model, tokenizer):
+    """
+    Creates a steerable model with an honesty control vector.
+    """
+    try:
+        steering_model_full_id = f"{model_label}-{random.randint(10, 99)}"
+        created_at = datetime.datetime.utcnow().isoformat()
+
+        # Train control vector using the honesty dataset
+        control_vector = create_dataset_and_train_vector_honesty(data_path, model, tokenizer, user_tag=user_tag, assistant_tag=asst_tag)
+
+        # Serialize control vector
+        def serialize_control_vector(control_vector):
+            directions_serializable = {
+                str(k): v.cpu().numpy().tolist() if isinstance(v, torch.Tensor) else v.tolist()
+                for k, v in control_vector.directions.items()
+            }
+            return {
+                'model_type': control_vector.model_type,
+                'directions': directions_serializable
+            }
+
+        serialized_control_vector = serialize_control_vector(control_vector)
+
+        # Prepare the steerable model data
+        control_dimensions = {'honesty': {'data_path': data_path}}
+
+        steerable_model_data_to_save = {
+            'id': steering_model_full_id,
+            'object': 'steerable_model',
+            'created_at': created_at,
+            'model': BASE_MODEL_NAME,
+            'control_vectors': {'honesty': serialized_control_vector},
+            'control_dimensions': control_dimensions
+        }
+
+        # Save the model data
+        filename = "model_steering_data.json"
+        try:
+            # Check if the file exists
+            if os.path.exists(filename):
+                # Load existing data
+                with open(filename, 'r') as f:
+                    existing_data = json.load(f)
+            else:
+                existing_data = []
+
+            # Append the new model data
+            existing_data.append(steerable_model_data_to_save)
+
+            # Save back to the JSON file
+            with open(filename, 'w') as f:
+                json.dump(existing_data, f, indent=4, default=str)
+            logger.info(f"Steerable model data saved to {filename}")
+        except Exception as json_error:
+            logger.error(f"Error saving steerable model data to JSON: {str(json_error)}")
+            raise
+
+        # Store the model in memory
+        steerable_models_vector_storage[steering_model_full_id] = steerable_model_data_to_save
+
+        # Prepare the response
+        response = {
+            'id': steering_model_full_id,
+            'object': 'steerable_model',
+            'created_at': created_at,
+            'model': BASE_MODEL_NAME,
+            'control_dimensions': control_dimensions
+        }
+
+        logger.info('Steerable model created', extra={'model_id': steering_model_full_id})
+
+        return response
+
+    except Exception as e:
+        logger.error('Error in create_steerable_model_honesty', extra={'error': str(e)})
+        raise
+
+def generate_completion_response_honesty(
+    model_name_request,
+    prompt,
+    control_settings,
+    generation_settings,
+    model,
+    tokenizer
+):
+    """
+    Generates a completion response with honesty control.
+    """
+    logger.info(f"Generating completion with control settings: {control_settings}")
+
+    input_text = f"{user_tag} {prompt} {asst_tag}"
+    encoding = tokenizer.encode_plus(
+        input_text,
+        return_tensors='pt',
+        padding=True,
+        truncation=True,
+        max_length=tokenizer.model_max_length,
+    )
+
+    # Move inputs to the model's device
+    device = next(model.parameters()).device
+    input_ids = encoding['input_ids'].to(device)
+    attention_mask = encoding['attention_mask'].to(device)
+
+    # Load control vectors
+    steerable_model = get_steerable_model(model_name_request)
+    if steerable_model:
+        control_vectors = steerable_model['control_vectors']
+        # Deserialize control vector
+        for trait, cv in control_vectors.items():
+            cv['directions'] = {int(k): torch.tensor(v) for k, v in cv['directions'].items()}
+            control_vectors[trait] = ControlVector(
+                model_type=cv['model_type'],
+                directions=cv['directions']
+            )
+    else:
+        control_vectors = {}
+
+    if control_vectors:
+        # Ensure control vectors are correctly formatted
+        for trait, cv in control_vectors.items():
+            for layer_key in cv.directions:
+                # If the direction is not a tensor, convert it
+                if not isinstance(cv.directions[layer_key], torch.Tensor):
+                    cv.directions[layer_key] = torch.tensor(cv.directions[layer_key])
+
+        # Update model.control_layers to match control vector layers
+        control_layers = list(next(iter(control_vectors.values())).directions.keys())
+        model.control_layers = control_layers
+
+        # Create a zero vector matching the control vector dimensions
+        matching_zero_vector = create_vector_with_zeros_like(next(iter(control_vectors.values())))
+
+        # Compute the weighted sum of control vectors based on control settings
+        vector_mix = sum(
+            (
+                control_vectors[trait] * control_settings.get(trait, 0.0)
+                for trait in control_vectors
+            ),
+            start=matching_zero_vector
+        )
+
+        # Apply the control vector if any trait has a non-zero setting
+        if any(control_settings.get(trait, 0.0) != 0.0 for trait in control_vectors):
+            model.set_control(vector_mix)
+            logger.info('Control vector applied', extra={'control_settings': control_settings})
+        else:
+            logger.info("No control settings applied. Using base model for generation.")
+            model.reset()
+    else:
+        # Use the base model if no control vectors are found
+        logger.info(f"No control vectors found for model '{model_name_request}'. Using base model for generation.")
+        model.reset()
+
+    # Merge default generation settings with provided settings
+    default_settings = {
+        "do_sample": False,
+        "max_new_tokens": 256,
+        "repetition_penalty": 1.1,
+        "pad_token_id": tokenizer.pad_token_id,
+    }
+    gen_settings = {**default_settings, **generation_settings}
+
+    # Generate the output
+    with torch.no_grad():
+        output_ids = model.generate(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            **gen_settings
+        )
+    generated_text = tokenizer.decode(output_ids[0], skip_special_tokens=True)
+
+    # Parse and format the generated text
+    formatted_response = parse_assistant_response(generated_text)
+
+    # Reset the model control after generation
+    model.reset()
+
+    # Prepare the response
+    response = {
+        'model_id': model_name_request,
+        'object': 'text_completion',
+        'created': datetime.datetime.utcnow().isoformat(),
+        'model': model_name_request,
+        'content': formatted_response,
+    }
+
+    logger.info('Completion generated', extra={'response_model_id': response['model_id']})
+    return response

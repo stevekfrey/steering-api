@@ -41,7 +41,7 @@ POST /steerable-model
       "negative_examples": ["example1","example2","example3"]
     }
   },
-  "prompt_list": ["string"]
+  "prompt_list": ["string", "string", "string"]
 }
 ```
 
