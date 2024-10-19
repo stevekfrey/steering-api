@@ -353,6 +353,8 @@ def steer_model_page():
                     st.success(f"Started training model: {model_name} (ID: {model_id})")
                     st.session_state['current_model'] = model_id  # Set as current model
 
+                    
+
                 except Exception as e:
                     st.error(f"Failed to create model: {str(e)}")
             else:
@@ -602,10 +604,8 @@ def steer_model_page():
             st.session_state.waiting_for_response = False
             st.rerun()  # Rerun the app to refresh the chat
     
-    # # Check the flag at the end of the script
-    # if st.session_state.get('needs_rerun', False):
-
-    #     st.rerun()
+    if st.button("🤠", key="cowboy_balloons_button"):
+        st.balloons()
 ################################################
 # API Docs page 
 ################################################

@@ -143,12 +143,7 @@ def train_steerable_model(model_id, model_label, control_dimensions, prompt_list
             STEERABLE_MODELS[model_id]['control_vectors'] = control_vectors
             STEERABLE_MODELS[model_id]['status'] = 'ready'
 
-
-        print (control_vectors)
-        test_vector = control_vector_to_dict(control_vectors['missionary'])
-        print(json.dumps(test_vector, indent=2))
         save_control_vectors(model_id, control_vectors)
-
 
         app.logger.info(f"Model {model_id} training completed.\n   Steering vectors created: {control_vectors.keys()}")
 
