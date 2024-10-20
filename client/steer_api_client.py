@@ -105,7 +105,7 @@ def get_model_status(model_id):
     response.raise_for_status()
     return response.json()
 
-def wait_for_model_ready(model_id, timeout=300, poll_interval=10):
+def wait_for_model_ready(model_id, timeout=300, poll_interval=15):
     """Poll the model status until it's ready or timeout is reached."""
     start_time = time.time()
     while time.time() - start_time < timeout:
