@@ -24,37 +24,9 @@ HEADERS = {
 }
 
 REMOTE_URL = os.getenv('REMOTE_URL')
-
 if not REMOTE_URL:
     raise ValueError("REMOTE_URL is not set in the environment variables")
-
-def get_remote_url():
-    REMOTE_URL = os.getenv('REMOTE_URL')
-
-    if not REMOTE_URL:
-        raise ValueError("REMOTE_URL is not set in the environment variables")
-
-    RUNPOD_TEMPLATE="https://{POD_ID}-{INTERNAL_PORT}.proxy.runpod.net"
-
-    # Get POD_ID and INTERNAL_PORT from environment variables
-    POD_ID = os.getenv('POD_ID')
-    INTERNAL_PORT = os.getenv('INTERNAL_PORT')
-
-    # Check if POD_ID and INTERNAL_PORT are set
-    if not POD_ID:
-        logger.warning("POD_ID is not set in the environment variables")
-    if not INTERNAL_PORT:
-        logger.warning("INTERNAL_PORT is not set in the environment variables")
-
-    # Update REMOTE_URL only if both POD_ID and INTERNAL_PORT are set
-    if POD_ID and INTERNAL_PORT:
-        REMOTE_URL = RUNPOD_TEMPLATE.format(POD_ID=POD_ID, INTERNAL_PORT=INTERNAL_PORT)
-        logger.info(f"REMOTE_URL updated to: {REMOTE_URL}")
-    else:
-        logger.warning("REMOTE_URL not updated due to missing POD_ID or INTERNAL_PORT")
-
-    return REMOTE_URL
-
+logger.info(f"using REMOTE_URL: {REMOTE_URL}")
 
 # Function to create a steerable model
 def create_steerable_model(model_label, control_dimensions, prompt_list=None):

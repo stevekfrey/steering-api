@@ -213,11 +213,11 @@ def steer_model_page():
     with col2:
         st.title("Steer API")
 
+    api_health_check()
+
     ################################################
     # Create Model 
     ################################################
-
-    api_health_check()
 
     st.markdown("---")
 
@@ -228,26 +228,29 @@ def steer_model_page():
         st.session_state.num_control_dimensions = DEFAULT_NUM_CONTROL_DIMENSIONS
 
     # Create column headers
-    header_cols = st.columns([1, 1, 2])
+    header_cols = st.columns([1, 1, 1, 1])
     with header_cols[0]:
         st.write("**Control Word**")
-        st.write("The type of behavior you want to steer.")
+        st.write("The type of behavior you want to steer")
+    with header_cols[1]:
+        st.write("**Generate**")
+        st.write("Auto-suggest examples")
     with header_cols[2]:
-        st.write("**Control Dimensions**")
-        st.write('Click "Generate Examples" to generate a list of positive and negative examples for the control word, or enter your own list, formatted as JSON. ')
+        st.write("**Positive Examples**")
+        st.write("Each example on a new line")
+    with header_cols[3]:
+        st.write("**Negative Examples**")
 
     placeholder_words = ["missionary", "savvy", "sophisticated"]
     
     # Create dynamic rows for control dimensions
     for i in range(st.session_state.num_control_dimensions):
-        if f'control_dimensions_{i}' not in st.session_state:
-            default_json = json.dumps({
-                "positive_examples": ["example1", "example2"],
-                "negative_examples": ["example3", "example4"]
-            })
-            st.session_state[f'control_dimensions_{i}'] = default_json
+        if f'positive_examples_{i}' not in st.session_state:
+            st.session_state[f'positive_examples_{i}'] = "example1\nexample2"
+        if f'negative_examples_{i}' not in st.session_state:
+            st.session_state[f'negative_examples_{i}'] = "example3\nexample4"
 
-        row_cols = st.columns([1, 1, 2])
+        row_cols = st.columns([1, 1, 1, 1])
         with row_cols[0]:
             if i < len(placeholder_words):
                 placeholder_word = placeholder_words[i]
@@ -266,29 +269,34 @@ def steer_model_page():
                     if result:
                         try:
                             if isinstance(result, dict):
-                                result = json.dumps(result)
-                            st.session_state[f'control_dimensions_{i}'] = result
-                            st.success(f"Examples generated for '{st.session_state[f'word_{i}']}'.")
-                        except (TypeError, json.JSONDecodeError) as e:
+                                positive = "\n".join(result.get("positive_examples", []))
+                                negative = "\n".join(result.get("negative_examples", []))
+                                st.session_state[f'positive_examples_{i}'] = positive
+                                st.session_state[f'negative_examples_{i}'] = negative
+                                st.success(f"Examples generated for '{st.session_state[f'word_{i}']}'.")
+                            else:
+                                st.error("Unexpected result format from generate_positive_negative_examples")
+                        except Exception as e:
                             st.error(f"Failed to parse generated examples: {str(e)}")
         with row_cols[2]:
-            placeholder_text = (
-                '{'
-                '"positive_examples": ["example1", "example2"], '
-                '"negative_examples": ["example3", "example4"]'
-                '}'
-            )
             st.text_area(
-                label=f"Control Dimensions {i+1}",
-                placeholder=placeholder_text,
-                key=f"control_dimensions_{i}",
-                height=200,
+                label=f"Positive Examples {i+1}",
+                key=f"positive_examples_{i}",
+                height=150,
                 label_visibility="collapsed",
-                value=st.session_state[f'control_dimensions_{i}']
+                value=st.session_state[f'positive_examples_{i}']
+            )
+        with row_cols[3]:
+            st.text_area(
+                label=f"Negative Examples {i+1}",
+                key=f"negative_examples_{i}",
+                height=150,
+                label_visibility="collapsed",
+                value=st.session_state[f'negative_examples_{i}']
             )
 
     # Button to add new control dimension
-    col1, col2, col3 = st.columns([1, 1, 2])
+    col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
     with col1:
         if st.button("➕ Add Word"):
             if 'num_control_dimensions' not in st.session_state:
@@ -305,31 +313,48 @@ def steer_model_page():
 
     # Text box to input the model name
     st.markdown("#### Name this vector set")
-    model_name = st.text_input("", key="model_name", label_visibility='hidden' )
+    
+    # Automatically populate the model name with control dimensions
+    if 'model_to_create_name' not in st.session_state:
+        st.session_state['model_to_create_name'] = ''
+
+    control_words = [
+        st.session_state.get(f'word_{i}', '').strip() 
+        for i in range(st.session_state.num_control_dimensions)
+    ]
+    # Filter out any empty strings
+    control_words = [word for word in control_words if word]
+    # Join with hyphens
+    default_model_name = '-'.join(control_words)
+    st.session_state['model_name'] = default_model_name
+    
+    model_name = st.text_input(
+        "", 
+        key="model_name", 
+        label_visibility='hidden',
+        value=st.session_state['model_to_create_name']
+    )
 
     # "Create Model" button
     if st.button("Create Model"):
         if not model_name:
             st.error("Please enter a model name.")
         else:
-            # Display success message after starting the training
+            # Prepare control dimensions
             control_dimensions = {}
             for i in range(st.session_state.num_control_dimensions):
                 control_word = st.session_state.get(f'word_{i}', '').strip()
-                control_input = st.session_state.get(f'control_dimensions_{i}', '').strip()
+                positive_examples = st.session_state.get(f'positive_examples_{i}', '').strip()
+                negative_examples = st.session_state.get(f'negative_examples_{i}', '').strip()
 
-                if control_word and control_input:
+                if control_word and positive_examples and negative_examples:
                     try:
-                        parsed_json = json.loads(control_input)
-                        if not isinstance(parsed_json, dict):
-                            raise ValueError(f"Control dimension '{control_word}' is not a JSON object.")
-                        if "positive_examples" not in parsed_json or "negative_examples" not in parsed_json:
-                            raise ValueError(f"Control dimension '{control_word}' must contain 'positive_examples' and 'negative_examples' keys.")
-                        control_dimensions[control_word] = parsed_json
-                    except json.JSONDecodeError as e:
-                        st.warning(f"Invalid JSON format in control dimension '{control_word}': {str(e)}")
-                    except ValueError as ve:
-                        st.warning(str(ve))
+                        control_dimensions[control_word] = {
+                            "positive_examples": positive_examples.split("\n"),
+                            "negative_examples": negative_examples.split("\n")
+                        }
+                    except Exception as e:
+                        st.error(f"Error parsing control dimensions: {str(e)}")
 
             if control_dimensions:
                 # Prepare the data payload for the API
@@ -463,7 +488,7 @@ def steer_model_page():
 
     # Third section: Generate
     st.markdown("---")
-    st.markdown("### 💬 Generate")
+    st.markdown("## 💬 Generate")
 
     if st.session_state.get('current_model') is None:
         st.warning("Please select a vector set from the 'Saved Vectors' section above.")
@@ -471,7 +496,6 @@ def steer_model_page():
         # Display the selected model ID
         selected_model_id = st.session_state['current_model']
         st.write(f"**Generating with Model ID:** `{selected_model_id}`")
-
         # Load the model details from the API
         try:
             selected_model = steer_api_client.get_steerable_model(selected_model_id)
@@ -486,126 +510,218 @@ def steer_model_page():
         control_dimensions = selected_model.get('control_dimensions', {})
         print('control_dimensions: ', control_dimensions)
 
+    ################################################
+    # Added Quick Test Section
+    ################################################
+    st.markdown("#### Quick Test")
+
+    # Initialize session state for Quick Test if not present
+    if 'quick_test_dimension' not in st.session_state:
         if control_dimensions:
-            st.markdown("#### Adjust Control Dimensions")
-            for word in control_dimensions.keys():
-                # Initialize session state for this word if not already done
-                if f"value_{word}" not in st.session_state:
-                    st.session_state[f"value_{word}"] = 0.0
+            st.session_state['quick_test_dimension'] = list(control_dimensions.keys())[0]
+        else:
+            st.session_state['quick_test_dimension'] = None
 
-                col1, col2 = st.columns([1, 5])
+    # Radio buttons to select a control dimension
+    if control_dimensions:
+        selected_dimension = st.radio(
+            "Select Control Dimension:",
+            options=list(control_dimensions.keys()),
+            index=0,
+            key="quick_test_dimension"
+        )
+    else:
+        st.warning("No control dimensions available for Quick Test.")
+        selected_dimension = None
 
-                with col1:
-                    number_value_key = f"number_value_{word}"
-                    st.number_input(
-                        label=f"{word}",
-                        min_value=-5.0,
-                        max_value=5.0,
-                        value=st.session_state[f"value_{word}"],
-                        step=0.5,
-                        key=number_value_key,
-                        on_change=on_value_change,
-                        args=(word,),  # Pass 'word' as an argument to the callback
+    # Text box for user input
+    quick_test_input = st.text_input("Enter your prompt for Quick Test:", key="quick_test_input")
+
+    # Generate button with spinner
+    if st.button("Run Quick Test"):
+        if not selected_dimension:
+            st.error("No control dimension selected.")
+        elif not quick_test_input:
+            st.error("Please enter a prompt.")
+        else:
+            with st.spinner("Generating Quick Test results..."):
+                # Prepare control settings with specified dimension values
+                control_settings_neg = {selected_dimension: -1.5}
+                control_settings_zero = {selected_dimension: 0.0}
+                control_settings_pos = {selected_dimension: 1.5}
+
+                try:
+                    # Make three completion requests
+                    response_zero = steer_api_client.generate_completion(
+                        model_id=selected_model_id,
+                        prompt=quick_test_input,
+                        control_settings=control_settings_zero,
+                        settings={"max_new_tokens": 256}
+                    )
+                    response_neg = steer_api_client.generate_completion(
+                        model_id=selected_model_id,
+                        prompt=quick_test_input,
+                        control_settings=control_settings_neg,
+                        settings={"max_new_tokens": 256}
+                    )
+                    response_pos = steer_api_client.generate_completion(
+                        model_id=selected_model_id,
+                        prompt=quick_test_input,
+                        control_settings=control_settings_pos,
+                        settings={"max_new_tokens": 256}
                     )
 
-                with col2:
-                    slider_value_key = f"slider_value_{word}"
-                    st.slider(
-                        label="",
-                        min_value=-5.0,
-                        max_value=5.0,
-                        value=st.session_state[f"value_{word}"],
-                        step=0.5,
-                        key=slider_value_key,
-                        on_change=on_value_change,
-                        args=(word,),  # Pass 'word' as an argument to the callback
-                    )
+                    # Extract content from responses
+                    def extract_content(resp):
+                        if isinstance(resp, dict) and 'content' in resp:
+                            return resp['content']
+                        elif isinstance(resp, str):
+                            return resp
+                        else:
+                            return "Invalid response format."
 
+                    baseline = extract_content(response_zero)
+                    neg_result = extract_content(response_neg)
+                    pos_result = extract_content(response_pos)
+
+                    # Display the results
+                    st.markdown("**Results:**")
+                    st.markdown(f"**Baseline (0):** {baseline}")
+                    st.markdown(f"**-- (-1.5):** {neg_result}")
+                    st.markdown(f"**++ (+1.5):** {pos_result}")
+
+                except Exception as e:
+                    st.error(f"Error during Quick Test generation: {str(e)}")
+
+    st.markdown('---')
+        
+        
         ################################################
         # Chat with Steered Model 
         ################################################
-        # Initialize chat history and other states if they don't exist
-        if 'chat_history' not in st.session_state:
-            st.session_state.chat_history = []
-        if 'waiting_for_response' not in st.session_state:
-            st.session_state.waiting_for_response = False
-        if 'control_settings' not in st.session_state:
-            st.session_state.control_settings = {}
-        # if 'needs_rerun' not in st.session_state:
-        #     st.session_state.needs_rerun = False
 
-        # Create a container for the chat history
-        chat_container = st.container()
 
-        # Chat input
-        user_input = st.chat_input("Enter your message...")
+            ################################################
+            # Sliders for control dimensions
 
-        if user_input:
-            # Collect control settings when sending a message
-            control_settings = {}
-            for word in control_dimensions.keys():
-                control_settings[word] = st.session_state[f"value_{word}"]
-            st.session_state.control_settings = control_settings
-            st.session_state.waiting_for_response = True
-            st.session_state.chat_history.append({"role": "user", "content": user_input})
-            st.session_state.needs_rerun = True
+    if control_dimensions:
+        st.markdown("#### Custom Chat")
+        for word in control_dimensions.keys():
+            # Initialize session state for this word if not already done
+            if f"value_{word}" not in st.session_state:
+                st.session_state[f"value_{word}"] = 0.0
 
-        # Display chat history
-        with chat_container:
-            for message in st.session_state.chat_history:
-                with st.chat_message(message["role"]):
-                    st.markdown(message["content"])
-            
-            # Display "..." message if waiting for response
-            if st.session_state.waiting_for_response:
-                with st.chat_message("assistant"):
-                    st.markdown("...")
+            col1, col2 = st.columns([1, 5])
 
-        # Process the API response
-        if st.session_state.waiting_for_response:
-            try:
-                response = steer_api_client.generate_completion(
-                    model_id=selected_model_id,
-                    prompt=st.session_state.chat_history[-1]["content"],
-                    control_settings=st.session_state.control_settings,
-                    settings={"max_new_tokens": 256}
+            with col1:
+                number_value_key = f"number_value_{word}"
+                st.number_input(
+                    label=f"{word}",
+                    min_value=-5.0,
+                    max_value=5.0,
+                    value=st.session_state[f"value_{word}"],
+                    step=0.5,
+                    key=number_value_key,
+                    on_change=on_value_change,
+                    args=(word,),  # Pass 'word' as an argument to the callback
                 )
-                
-                # Parse the response to get only the content
-                if isinstance(response, dict) and 'content' in response:
-                    full_response = response['content']
-                elif isinstance(response, str):
-                    full_response = response
-                else:
-                    raise ValueError("Unexpected response format from API")
-                
-                # Format control settings with smaller font using Markdown
-                control_settings_str = ", ".join([f"{k}: {v}" for k, v in st.session_state.control_settings.items()])
-                control_settings_md = f"{control_settings_str}"
-                
-                # Combine control settings and response
-                full_response_with_settings = f"""
+
+            with col2:
+                slider_value_key = f"slider_value_{word}"
+                st.slider(
+                    label="",
+                    min_value=-5.0,
+                    max_value=5.0,
+                    value=st.session_state[f"value_{word}"],
+                    step=0.5,
+                    key=slider_value_key,
+                    on_change=on_value_change,
+                    args=(word,),  # Pass 'word' as an argument to the callback
+                )
+
+    # Initialize chat history and other states if they don't exist
+    if 'chat_history' not in st.session_state:
+        st.session_state.chat_history = []
+    if 'waiting_for_response' not in st.session_state:
+        st.session_state.waiting_for_response = False
+    if 'control_settings' not in st.session_state:
+        st.session_state.control_settings = {}
+    # if 'needs_rerun' not in st.session_state:
+    #     st.session_state.needs_rerun = False
+
+    # Create a container for the chat history
+    chat_container = st.container()
+
+    # Chat input
+    user_input = st.chat_input("Enter your message...")
+
+    if user_input:
+        # Collect control settings when sending a message
+        control_settings = {}
+        for word in control_dimensions.keys():
+            control_settings[word] = st.session_state[f"value_{word}"]
+        st.session_state.control_settings = control_settings
+        st.session_state.waiting_for_response = True
+        st.session_state.chat_history.append({"role": "user", "content": user_input})
+        st.session_state.needs_rerun = True
+
+    # Display chat history
+    with chat_container:
+        for message in st.session_state.chat_history:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+        
+        # Display "..." message if waiting for response
+        if st.session_state.waiting_for_response:
+            with st.chat_message("assistant"):
+                st.markdown("...")
+
+    # Process the API response
+    if st.session_state.waiting_for_response:
+        try:
+            response = steer_api_client.generate_completion(
+                model_id=selected_model_id,
+                prompt=st.session_state.chat_history[-1]["content"],
+                control_settings=st.session_state.control_settings,
+                settings={"max_new_tokens": 256}
+            )
+            
+            # Parse the response to get only the content
+            if isinstance(response, dict) and 'content' in response:
+                full_response = response['content']
+            elif isinstance(response, str):
+                full_response = response
+            else:
+                raise ValueError("Unexpected response format from API")
+            
+            # Format control settings with smaller font using Markdown
+            control_settings_str = ", ".join([f"{k}: {v}" for k, v in st.session_state.control_settings.items()])
+            control_settings_md = f"{control_settings_str}"
+            
+            # Combine control settings and response
+            full_response_with_settings = f"""
 [{control_settings_md}]
 
 {full_response}
 """
-                
-            except Exception as e:
-                full_response_with_settings = f"Error generating response: {str(e)}"
-                st.error(full_response_with_settings)
+            
+        except Exception as e:
+            full_response_with_settings = f"Error generating response: {str(e)}"
+            st.error(full_response_with_settings)
 
-            # Add assistant response to chat history
-            st.session_state.chat_history.append({"role": "assistant", "content": full_response_with_settings})
-            st.session_state.waiting_for_response = False
-            st.rerun()  # Rerun to display the new message
+        # Add assistant response to chat history
+        st.session_state.chat_history.append({"role": "assistant", "content": full_response_with_settings})
+        st.session_state.waiting_for_response = False
+        st.rerun()  # Rerun to display the new message
 
-        st.markdown('---')
-        if st.button("Refresh Chat"):
-            st.session_state.chat_history = []
-            st.session_state.waiting_for_response = False
-            st.rerun()  # Rerun the app to refresh the chat
-    
-    if st.button("🤠", key="cowboy_balloons_button"):
+    st.markdown('---')
+    if st.button("Refresh Chat"):
+        st.session_state.chat_history = []
+        st.session_state.waiting_for_response = False
+        st.rerun()  # Rerun the app to refresh the chat
+
+    st.markdown('---')
+    if st.button("🤠", key="balloons_button"):
         st.balloons()
 ################################################
 # API Docs page 
@@ -651,7 +767,7 @@ def main():
     st.set_page_config(page_title="Steerable Models App", layout="wide")
 
     # Create tabs
-    tab1, tab2, tab3, tab4 = st.tabs(["Steer API", "API Documentation", "Research Notebook", "Test Suite"])
+    tab1, tab2, tab3= st.tabs(["Steer API", "API Documentation", "Examples Notebook"])
     
     with tab1:
         steer_model_page()
@@ -659,7 +775,7 @@ def main():
     with tab2:
         api_docs_content = load_api_docs()
         REMOTE_URL = os.getenv('REMOTE_URL')
-        st.markdown(f"#### API SERVER URL: `{REMOTE_URL}`")
+        st.markdown(f"#### API Server URL: `{REMOTE_URL}`")
         st.markdown(api_docs_content)
     
     with tab3:
@@ -671,3 +787,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

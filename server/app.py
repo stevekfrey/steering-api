@@ -62,8 +62,9 @@ app.config['MODEL'], app.config['TOKENIZER'] = load_model()
 app.config['MODEL_NAME'] = BASE_MODEL_NAME
 
 # Load and concatenate prompt lists for specified types
-PROMPT_TYPES = ["facts", "emotions"]
+PROMPT_TYPES = ["facts", "emotions", "all_truncated_outputs"]
 ALL_PROMPTS = []
+
 for prompt_type in PROMPT_TYPES:
     if prompt_type in prompt_filepaths:
         prompts = load_prompt_list(prompt_filepaths[prompt_type])
@@ -88,6 +89,8 @@ STEERABLE_MODELS = {}
 
 # Lock for thread-safe operations on STEERABLE_MODELS
 steerable_models_lock = Lock()
+
+app.logger.info(f"Server is ready.")
 
 ################################################
 # Background Model Training Function
