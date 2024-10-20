@@ -199,9 +199,9 @@ The API implements rate limiting. If you exceed the rate limit, you will receive
 ```python
 import requests
 
-url = "https://api.steering.example.com/v1/steerable-model"
+url = REMOTE_URL + "/steerable-model"
 headers = {
-    "Authorization": "Bearer YOUR_API_KEY",
+    "Authorization": f"Bearer {API_AUTH_TOKEN}",
     "Content-Type": "application/json"
 }
 data = {
@@ -216,7 +216,13 @@ data = {
 }
 
 response = requests.post(url, headers=headers, json=data)
-print(response.json())
+
+print(f"Status Code: {response.status_code}")
+print("Response Content:")
+print(response.text)
+model_id = response.json()['id']
+print (f"Model ID: {model_id}")
+
 ```
 
 ### Generating a Completion
@@ -224,13 +230,13 @@ print(response.json())
 ```python
 import requests
 
-url = "https://api.steering.example.com/v1/completions"
+url = f"{REMOTE_URL}/completions"
 headers = {
-    "Authorization": "Bearer YOUR_API_KEY",
+    "Authorization": f"Bearer {API_AUTH_TOKEN}",  # Fixed string formatting
     "Content-Type": "application/json"
 }
 data = {
-    "model": "positive_sentiment-42",
+    "model": model_id, 
     "prompt": "Write a product review:",
     "control_settings": {
         "positivity": 0.8
@@ -241,7 +247,9 @@ data = {
 }
 
 response = requests.post(url, headers=headers, json=data)
-print(response.json())
+message = response.json()['content']
+print (message)
+
 ```
 
 ## Best Practices
