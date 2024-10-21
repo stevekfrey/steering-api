@@ -10,17 +10,17 @@ import threading
 from enum import Enum
 from dotenv import load_dotenv
 from huggingface_hub import login
-from typing import Callable, Any, Dict
+from typing import Callable, Any, Dict, Union
 from tqdm import tqdm
 import random
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedTokenizer
 from repeng import ControlVector, ControlModel, DatasetEntry
 import pandas as pd
 from typing import List, Dict
-from repeng import ControlVector, DatasetEntry, RepReadingPipeline
+from repeng import ControlVector, DatasetEntry
 from transformers import pipeline
 
-from steer_templates import DEFAULT_TEMPLATE, DEFAULT_PROMPT_LIST, user_tag, asst_tag, BASE_MODEL_NAME
+from server.steer_templates import DEFAULT_TEMPLATE, DEFAULT_PROMPT_LIST, user_tag, asst_tag, BASE_MODEL_NAME
 
 # Initialize a logger for this module
 logger = logging.getLogger(__name__)
@@ -510,17 +510,25 @@ def get_model_status(model_id):
 
 def honesty_function_dataset(
     data_path: str,
-    tokenizer,
+    tokenizer: PreTrainedTokenizer,
     user_tag: str = "",
     assistant_tag: str = "",
-    seed: int = 0
-) -> Dict[str, Dict[str, List]]:
+    seed: int = 0,
+) -> Dict[str, Dict[str, Any]]:
     """
     Processes data to create training and testing datasets based on honesty.
 
+    Args:
+    - data_path (str): Path to the CSV containing the data.
+    - tokenizer (PreTrainedTokenizer): Tokenizer to tokenize statements.
+    - user_tag (str): Instruction template.
+    - assistant_tag (str): Instruction template user tag.
+    - seed (int): Random seed for reproducibility.
+
     Returns:
-        dict: Contains 'train' and 'test' datasets with 'data' and 'labels'.
+    - Dictionary containing train and test data.
     """
+
     # Setting the seed for reproducibility
     random.seed(seed)
 
@@ -536,16 +544,24 @@ def honesty_function_dataset(
     # Process statements
     for statement in true_statements:
         tokens = tokenizer.tokenize(statement)
+
         for idx in range(1, len(tokens) - 5):
             truncated_tokens = tokens[:idx]
             truncated_statement = tokenizer.convert_tokens_to_string(truncated_tokens)
 
-            honest_statements.append(f"{user_tag} {template_str.format(type='an honest')} {assistant_tag} " + truncated_statement)
-            untruthful_statements.append(f"{user_tag} {template_str.format(type='an untruthful')} {assistant_tag} " + truncated_statement)
+            honest_statements.append(
+                f"{user_tag} {template_str.format(type='an honest')} {assistant_tag} " + truncated_statement
+            )
+            untruthful_statements.append(
+                f"{user_tag} {template_str.format(type='an untruthful')} {assistant_tag} " + truncated_statement
+            )
 
     # Create training data
     ntrain = 512
-    combined_data = [[honest, untruthful] for honest, untruthful in zip(honest_statements, untruthful_statements)]
+    combined_data = [
+        [honest, untruthful]
+        for honest, untruthful in zip(honest_statements, untruthful_statements)
+    ]
     train_data = combined_data[:ntrain]
 
     train_labels = []
@@ -554,130 +570,115 @@ def honesty_function_dataset(
         random.shuffle(d)
         train_labels.append([s == true_s for s in d])
 
-    train_data_flat = [item for sublist in train_data for item in sublist]
+    train_data_flat = np.concatenate(train_data).tolist()
 
     # Create test data
-    reshaped_data = np.array([[honest, untruthful] for honest, untruthful in zip(honest_statements[:-1], untruthful_statements[1:])]).flatten()
+    reshaped_data = np.array([
+        [honest, untruthful]
+        for honest, untruthful in zip(honest_statements[:-1], untruthful_statements[1:])
+    ]).flatten()
     test_data = reshaped_data[ntrain:ntrain*2].tolist()
+
+    print(f"Train data: {len(train_data_flat)}")
+    print(f"Test data: {len(test_data)}")
 
     return {
         'train': {'data': train_data_flat, 'labels': train_labels},
         'test': {'data': test_data, 'labels': [[1, 0]] * len(test_data)}
     }
 
-def create_dataset_and_train_vector_honesty(data_path, model, tokenizer, user_tag="", assistant_tag=""):
+def create_dataset_and_train_vector_honesty(
+    data_path: str,
+    model: AutoModelForCausalLM,
+    tokenizer: PreTrainedTokenizer,
+    user_tag: str = "",
+    assistant_tag: str = "",
+) -> Any:
     """
-    Creates a dataset from the honesty function and trains a control vector.
+    Creates the dataset and trains the control vector for honesty.
+
+    Args:
+    - data_path (str): Path to the CSV containing the data.
+    - model (AutoModelForCausalLM): The language model.
+    - tokenizer (PreTrainedTokenizer): The tokenizer.
+    - user_tag (str): User tag string.
+    - assistant_tag (str): Assistant tag string.
+
+    Returns:
+    - The trained control vector.
     """
-    logger.info("Creating honesty dataset...")
+
+    # Create the dataset
     dataset = honesty_function_dataset(data_path, tokenizer, user_tag, assistant_tag)
-    train_data = dataset['train']['data']
-    train_labels = dataset['train']['labels']
 
-    logger.info(f"Training data size: {len(train_data)}")
-
-    # Convert labels to the format expected by ControlVector.train()
-    # Assuming that ControlVector.train can accept labels parameter
-
-    # Initialize the representation reading pipeline
-    rep_token = -1  # Token at which to extract representations
-    hidden_layers = list(range(-1, -model.model.config.num_hidden_layers, -1))
-    n_difference = 1  # Number of principal components to extract
+    # Define rep-reading parameters
+    rep_token = -1
+    hidden_layers = list(range(-1, -model.config.num_hidden_layers, -1))
+    n_difference = 1
     direction_method = 'pca'
 
-    rep_reading_pipeline = RepReadingPipeline(model=model.model, tokenizer=tokenizer)
+    # Initialize the rep-reading pipeline
+    rep_reading_pipeline = pipeline("rep-reading", model=model, tokenizer=tokenizer)
 
-    # Get directions (control vectors) that differentiate honest and untruthful statements
-    control_vector = rep_reading_pipeline.get_directions(
-        train_data,
+    # Get directions (train the control vector)
+    honesty_rep_reader = rep_reading_pipeline.get_directions(
+        dataset['train']['data'],
         rep_token=rep_token,
         hidden_layers=hidden_layers,
         n_difference=n_difference,
-        train_labels=train_labels,
+        train_labels=dataset['train']['labels'],
         direction_method=direction_method,
         batch_size=32,
     )
 
-    logger.info("Control vector training completed.")
+    return honesty_rep_reader
 
-    return control_vector
+def create_steerable_model_honesty(
+    model_label: str,
+    data_path: str,
+    user_tag: str = "",
+    asst_tag: str = "",
+) -> Dict[str, Any]:
+    """
+    Creates a steerable model with the honesty control vector.
 
-def create_steerable_model_honesty(model_label, data_path, model, tokenizer):
+    Args:
+    - model_label (str): The Hugging Face model name or path.
+    - data_path (str): Path to the CSV containing the data.
+    - user_tag (str): User tag string.
+    - asst_tag (str): Assistant tag string.
+
+    Returns:
+    - Dictionary containing the model, tokenizer, control vector, pipeline, and layer ids.
     """
-    Creates a steerable model with an honesty control vector.
-    """
+    logger.info("Creating honesty dataset...")
+    model, tokenizer = load_model_and_tokenizer(model_label)
+
     try:
-        steering_model_full_id = f"{model_label}-{random.randint(10, 99)}"
-        created_at = datetime.datetime.utcnow().isoformat()
+        control_vector = create_dataset_and_train_vector_honesty(
+            data_path, model, tokenizer, user_tag=user_tag, assistant_tag=asst_tag
+        )
 
-        # Train control vector using the honesty dataset
-        control_vector = create_dataset_and_train_vector_honesty(data_path, model, tokenizer, user_tag=user_tag, assistant_tag=asst_tag)
+        layer_id = list(range(-10, -32, -1))
+        control_method = "reading_vec"
 
-        # Serialize control vector
-        def serialize_control_vector(control_vector):
-            directions_serializable = {
-                str(k): v.cpu().numpy().tolist() if isinstance(v, torch.Tensor) else v.tolist()
-                for k, v in control_vector.directions.items()
-            }
-            return {
-                'model_type': control_vector.model_type,
-                'directions': directions_serializable
-            }
+        rep_control_pipeline = pipeline(
+            "rep-control",
+            model=model,
+            tokenizer=tokenizer,
+            layers=layer_id,
+            control_method=control_method,
+        )
 
-        serialized_control_vector = serialize_control_vector(control_vector)
-
-        # Prepare the steerable model data
-        control_dimensions = {'honesty': {'data_path': data_path}}
-
-        steerable_model_data_to_save = {
-            'id': steering_model_full_id,
-            'object': 'steerable_model',
-            'created_at': created_at,
-            'model': BASE_MODEL_NAME,
-            'control_vectors': {'honesty': serialized_control_vector},
-            'control_dimensions': control_dimensions
+        return {
+            "model": model,
+            "tokenizer": tokenizer,
+            "control_vector": control_vector,
+            "rep_control_pipeline": rep_control_pipeline,
+            "layer_id": layer_id,
         }
-
-        # Save the model data
-        filename = "model_steering_data.json"
-        try:
-            # Check if the file exists
-            if os.path.exists(filename):
-                # Load existing data
-                with open(filename, 'r') as f:
-                    existing_data = json.load(f)
-            else:
-                existing_data = []
-
-            # Append the new model data
-            existing_data.append(steerable_model_data_to_save)
-
-            # Save back to the JSON file
-            with open(filename, 'w') as f:
-                json.dump(existing_data, f, indent=4, default=str)
-            logger.info(f"Steerable model data saved to {filename}")
-        except Exception as json_error:
-            logger.error(f"Error saving steerable model data to JSON: {str(json_error)}")
-            raise
-
-        # Store the model in memory
-        steerable_models_vector_storage[steering_model_full_id] = steerable_model_data_to_save
-
-        # Prepare the response
-        response = {
-            'id': steering_model_full_id,
-            'object': 'steerable_model',
-            'created_at': created_at,
-            'model': BASE_MODEL_NAME,
-            'control_dimensions': control_dimensions
-        }
-
-        logger.info('Steerable model created', extra={'model_id': steering_model_full_id})
-
-        return response
-
     except Exception as e:
-        logger.error('Error in create_steerable_model_honesty', extra={'error': str(e)})
+        logger.error(f"Error in create_steerable_model_honesty: {str(e)}")
         raise
 
 def generate_completion_response_honesty(
@@ -792,3 +793,7 @@ def generate_completion_response_honesty(
 
     logger.info('Completion generated', extra={'response_model_id': response['model_id']})
     return response
+
+
+
+

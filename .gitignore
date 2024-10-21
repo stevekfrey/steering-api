@@ -16,3 +16,6 @@ images/icon_steer_square.webp
 deploy_setup.md 
 eval_results/honest_all_responses/
 api_design.md
+evals/multishot_examples.json
+evals/combined_harmful_entries.txt
+evals/initial results.md

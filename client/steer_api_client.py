@@ -90,11 +90,14 @@ def generate_completion(model_id, prompt, control_settings=None, settings=None):
 def health_check():
     """Check the health of the API by hitting the root endpoint."""
     try:
-        response = requests.get(f"{REMOTE_URL}/", headers=HEADERS)
+        response = requests.get(f"{REMOTE_URL}/", headers=HEADERS, timeout=7)
         if response.status_code == 200:
             return response.json()
         else:
             raise Exception(f"Health check failed with status code {response.status_code}: {response.text}")
+    except requests.exceptions.Timeout:
+        # Raise an exception so it can be handled in ui.py
+        raise Exception("Server is currently down for maintenance.")
     except requests.exceptions.RequestException as e:
         raise Exception(f"Health check request failed: {e}")
     

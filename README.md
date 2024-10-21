@@ -55,7 +55,7 @@ Both LAT (Zou 2024) and CAA (Rimsky 2023) use neural activations to derive conce
 
 - Understand limitations on how control dimensions are revealed, to prevent reverse-engineering of the model weights
 - Effects fo adding multiple control vectors together 
-- Given the parameter size of a model, how many test prompts or inputs are needed to derive the “full circuit” for a behavior? Do you pass in every conceivable sentence to squeeze the last bits of signal from model activations? What if there are faint sub-circuits that hide during testing but emerge from out-of-distribution inputs (or creative jailbreaking) in the wild? 
+- Given the parameter size of a model, how many test prompts or inputs are needed to derive the “full circuit” for a behavior? (Akin to the "Influence Functions" 2023 paper. ) 
 - Multi-agent systems with custom behaviors (e.g. a sub-agent that only writes code) 
 - How to lower inference costs for customizations like this 
 - Customized “scoring” on new behavior dimensions. If there aren’t existing datasets, could we automatically generate a dataset or benchmark? (As shown in Appendix L of "Steering Llama 2 via Contrastive Activation Addition")

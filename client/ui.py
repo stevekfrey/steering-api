@@ -37,8 +37,8 @@ def generate_positive_negative_examples(word):
 
     EXAMPLE RESPONSE:
     {{
-        "positive_examples": ["materialistic", "consumerist", "acquisitive", "wealthy", "greedy", "possessive", "money-oriented", "worldly", "profit-driven", "commercialistic"],
-        "negative_examples": ["minimalist", "austere", "spiritual", "altruistic", "ascetic", "frugal", "selfless", "anti-consumerist", "non-materialistic", "content"]
+        "positive_examples": ["materialistic", "consumerist", "acquisitive", "possessive", "money-oriented"],
+        "negative_examples": ["minimalist", "austere", "ascetic", "frugal", "non-materialistic"]
     }}
     =====
     INPUT:
@@ -189,7 +189,7 @@ def api_health_check():
         response = steer_api_client.health_check()
         st.success(f"Successfully connected to API: {response['message']}")
     except Exception as e:
-        st.error(f"Failed to connect to API: {str(e)}")
+        st.error(f"Did not connect to API: {str(e)}")
 
 def on_value_change(word):
     # Determine which widget changed and update the shared value
@@ -522,6 +522,12 @@ def steer_model_page():
         else:
             st.session_state['quick_test_dimension'] = None
 
+    # Initialize session state for multipliers
+    if 'negative_quick_test_multiplier' not in st.session_state:
+        st.session_state['negative_quick_test_multiplier'] = -1.5
+    if 'positive_quick_test_multiplier' not in st.session_state:
+        st.session_state['positive_quick_test_multiplier'] = 1.5
+
     # Radio buttons to select a control dimension
     if control_dimensions:
         selected_dimension = st.radio(
@@ -534,6 +540,25 @@ def steer_model_page():
         st.warning("No control dimensions available for Quick Test.")
         selected_dimension = None
 
+    # Number inputs for multipliers
+    col1, col2 = st.columns(2)
+    with col1:
+        negative_multiplier = st.number_input(
+            "Negative Quick Test Multiplier",
+            value=st.session_state['negative_quick_test_multiplier'],
+            step=0.1,
+            format="%.1f",
+            key="negative_quick_test_multiplier"
+        )
+    with col2:
+        positive_multiplier = st.number_input(
+            "Positive Quick Test Multiplier",
+            value=st.session_state['positive_quick_test_multiplier'],
+            step=0.1,
+            format="%.1f",
+            key="positive_quick_test_multiplier"
+        )
+
     # Text box for user input
     quick_test_input = st.text_input("Enter your prompt for Quick Test:", key="quick_test_input")
 
@@ -544,54 +569,60 @@ def steer_model_page():
         elif not quick_test_input:
             st.error("Please enter a prompt.")
         else:
-            with st.spinner("Generating Quick Test results..."):
-                # Prepare control settings with specified dimension values
-                control_settings_neg = {selected_dimension: -1.5}
-                control_settings_zero = {selected_dimension: 0.0}
-                control_settings_pos = {selected_dimension: 1.5}
+            # Prepare control settings with specified dimension values
+            control_settings_neg = {selected_dimension: negative_multiplier}
+            control_settings_zero = {selected_dimension: 0.0}
+            control_settings_pos = {selected_dimension: positive_multiplier}
 
-                try:
-                    # Make three completion requests
+            # Create placeholders for results
+            baseline_placeholder = st.empty()
+            neg_placeholder = st.empty()
+            pos_placeholder = st.empty()
+
+            def extract_content(resp):
+                if isinstance(resp, dict) and 'content' in resp:
+                    return resp['content']
+                elif isinstance(resp, str):
+                    return resp
+                else:
+                    return "Invalid response format."
+
+            try:
+                # Baseline (0) request
+                with st.spinner("Generating Baseline (0) result..."):
                     response_zero = steer_api_client.generate_completion(
                         model_id=selected_model_id,
                         prompt=quick_test_input,
                         control_settings=control_settings_zero,
                         settings={"max_new_tokens": 256}
                     )
+                    baseline = extract_content(response_zero)
+                    baseline_placeholder.markdown(f"**Baseline (0):** {baseline}")
+
+                # Negative request
+                with st.spinner(f"Generating Negative ({negative_multiplier}) result..."):
                     response_neg = steer_api_client.generate_completion(
                         model_id=selected_model_id,
                         prompt=quick_test_input,
                         control_settings=control_settings_neg,
                         settings={"max_new_tokens": 256}
                     )
+                    neg_result = extract_content(response_neg)
+                    neg_placeholder.markdown(f"**-- ({negative_multiplier}):** {neg_result}")
+
+                # Positive request
+                with st.spinner(f"Generating Positive ({positive_multiplier}) result..."):
                     response_pos = steer_api_client.generate_completion(
                         model_id=selected_model_id,
                         prompt=quick_test_input,
                         control_settings=control_settings_pos,
                         settings={"max_new_tokens": 256}
                     )
-
-                    # Extract content from responses
-                    def extract_content(resp):
-                        if isinstance(resp, dict) and 'content' in resp:
-                            return resp['content']
-                        elif isinstance(resp, str):
-                            return resp
-                        else:
-                            return "Invalid response format."
-
-                    baseline = extract_content(response_zero)
-                    neg_result = extract_content(response_neg)
                     pos_result = extract_content(response_pos)
+                    pos_placeholder.markdown(f"**++ ({positive_multiplier}):** {pos_result}")
 
-                    # Display the results
-                    st.markdown("**Results:**")
-                    st.markdown(f"**Baseline (0):** {baseline}")
-                    st.markdown(f"**-- (-1.5):** {neg_result}")
-                    st.markdown(f"**++ (+1.5):** {pos_result}")
-
-                except Exception as e:
-                    st.error(f"Error during Quick Test generation: {str(e)}")
+            except Exception as e:
+                st.error(f"Error during Quick Test generation: {str(e)}")
 
     st.markdown('---')
         
