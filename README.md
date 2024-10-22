@@ -3,8 +3,8 @@
 
 ### Notes on Steering Vectors 
 
-Steering is an emerging body of techniques to guide the behavior of LLMs. 
-By adding or subtracting control vectors to the model's internal activations, we can steer the output toward desired behavior. It's like doing neuroscience on a brain to see what desired brain states look like, then stimulating individual neurons to reproduce the desired activation pattern. 
+Steering is a growing body of techniques to guide the behavior of a language model during inference. 
+By adding or subtracting control vectors to the model's internal activations, we can steer the output toward desired behavior. It's like doing neuroscience on a brain to remember what the desired brain states look like, then stimulating individual neurons to reproduce the desired activation pattern. 
 
 1. For each target trait, we create and save a control vector
 2. To steer the model, we scale these control vectors according to how much we want that trait to influence the output
@@ -40,7 +40,7 @@ The steering techniques used here are based on the research on Activation Engine
 
 It uses the [repeng](https://github.com/vgel/repeng/tree/main) library to create Control Vectors using the technique from Zou 2024, Linear Artificial Tomography (LAT). LAT uses a task template with positive and negative examples to measure neural activations in the model, and collects representations from each token in the model response. Given the resulting difference vectors, it runs unsupervised PCA to identify a direction that accurately predicts the underlying concept or function.
 
-Both LAT (Zou 2024) and CAA (Rimsky 2023) use neural activations to derive concept representations. The LAT pipeline differs from CAA, which uses multiple-choice datasets for reading representations. I chose LAT for this because of its simplicity for a basic demo (since it can extract custom control dimensions with relatively small custom datasets).
+Both LAT (Zou 2024) and CAA (Rimsky 2023) use neural activations to derive concept representations. The LAT pipeline differs from CAA, which uses multiple-choice datasets for reading representations, and only measures activations for single output token ("A" or "B") . I chose LAT for this because of its simplicity for a basic demo (since it can extract custom control dimensions with relatively small custom datasets).
 
 ![LAT_pipeline_diagram_Zou2024](images/LAT_pipeline_diagram_Zou2024.png)
 
@@ -48,17 +48,17 @@ Both LAT (Zou 2024) and CAA (Rimsky 2023) use neural activations to derive conce
 # Future development
 
 - In the API, offer a standard set "pre-made" control vectors - the most commonly requested behaviors (e.g. "responsible" "only for coding") 
-- Explore ways to automatically generate the training dataset
+- Explore ways to automatically generate the training dataset. (Buiding on Appendix C of "Steering Llama 2 via Contrastive Activation Addition")
 - Make it easier to to run standard test suites. Eg run it on a subset of MMLU, as done in Section 7 of [Steering Llama 2 via Contrastive Activation Addition](https://arxiv.org/html/2312.06681v2).
 
 # Future research
 
-- Understand limitations on how control dimensions are revealed, to prevent reverse-engineering of the model weights
+- Develop ways to "route" incoming requests to activate the most relevant control vectors for that prompt. Ie activate "harmless" for prompts about harmful topics. 
 - Effects fo adding multiple control vectors together 
-- Given the parameter size of a model, how many test prompts or inputs are needed to derive the “full circuit” for a behavior? Do you pass in every conceivable sentence to squeeze the last bits of signal from model activations? What if there are faint sub-circuits that hide during testing but emerge from out-of-distribution inputs (or creative jailbreaking) in the wild? 
+- Given the parameter size of a model, how many test prompts or inputs are needed to derive the “full circuit” for a behavior? (Akin to the "Influence Functions" 2023 paper. ) 
 - Multi-agent systems with custom behaviors (e.g. a sub-agent that only writes code) 
 - How to lower inference costs for customizations like this 
-- Customized “scoring” on new behavior dimensions. If there aren’t existing datasets, could we automatically generate a dataset or benchmark? 
+- Customized “scoring” on new behavior dimensions. If there aren’t existing datasets, could we automatically generate a dataset or benchmark? (As shown in Appendix L of "Steering Llama 2 via Contrastive Activation Addition")
     - A naive version of this automated grading system could pass responses to Sonnet / GPT-4 with the following prompt:
     
     ```
@@ -74,3 +74,8 @@ Both LAT (Zou 2024) and CAA (Rimsky 2023) use neural activations to derive conce
     
     - To calibrate, we could compare scores to human-rated versions
     - However, this is subject to noise from e.g. variations in the type of model that is used to evaluate (Sonnet, GPT-4, etc)
+
+
+# Contact
+
+- [stevekfrey@proton.me](mailto:stevekfey@proton.me)

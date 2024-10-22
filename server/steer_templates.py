@@ -7,7 +7,8 @@ DEFAULT_TEMPLATE = "{user_tag} Act as if you're extremely {persona}. {asst_tag}{
 
 prompt_filepaths = {
     "emotions": "data_full/emotions_small.json",
-    "facts": "data_full/facts_small.json"
+    "facts": "data_full/facts_small.json",
+    "all_truncated_outputs": "data/all_truncated_outputs.json"
 }
 
 MODEL_LOCAL_SAVE_PATH='model_data/saved_models.json'

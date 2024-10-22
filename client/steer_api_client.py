@@ -24,37 +24,9 @@ HEADERS = {
 }
 
 REMOTE_URL = os.getenv('REMOTE_URL')
-
 if not REMOTE_URL:
     raise ValueError("REMOTE_URL is not set in the environment variables")
-
-def get_remote_url():
-    REMOTE_URL = os.getenv('REMOTE_URL')
-
-    if not REMOTE_URL:
-        raise ValueError("REMOTE_URL is not set in the environment variables")
-
-    RUNPOD_TEMPLATE="https://{POD_ID}-{INTERNAL_PORT}.proxy.runpod.net"
-
-    # Get POD_ID and INTERNAL_PORT from environment variables
-    POD_ID = os.getenv('POD_ID')
-    INTERNAL_PORT = os.getenv('INTERNAL_PORT')
-
-    # Check if POD_ID and INTERNAL_PORT are set
-    if not POD_ID:
-        logger.warning("POD_ID is not set in the environment variables")
-    if not INTERNAL_PORT:
-        logger.warning("INTERNAL_PORT is not set in the environment variables")
-
-    # Update REMOTE_URL only if both POD_ID and INTERNAL_PORT are set
-    if POD_ID and INTERNAL_PORT:
-        REMOTE_URL = RUNPOD_TEMPLATE.format(POD_ID=POD_ID, INTERNAL_PORT=INTERNAL_PORT)
-        logger.info(f"REMOTE_URL updated to: {REMOTE_URL}")
-    else:
-        logger.warning("REMOTE_URL not updated due to missing POD_ID or INTERNAL_PORT")
-
-    return REMOTE_URL
-
+logger.info(f"using REMOTE_URL: {REMOTE_URL}")
 
 # Function to create a steerable model
 def create_steerable_model(model_label, control_dimensions, prompt_list=None):
@@ -118,11 +90,14 @@ def generate_completion(model_id, prompt, control_settings=None, settings=None):
 def health_check():
     """Check the health of the API by hitting the root endpoint."""
     try:
-        response = requests.get(f"{REMOTE_URL}/", headers=HEADERS)
+        response = requests.get(f"{REMOTE_URL}/", headers=HEADERS, timeout=7)
         if response.status_code == 200:
             return response.json()
         else:
             raise Exception(f"Health check failed with status code {response.status_code}: {response.text}")
+    except requests.exceptions.Timeout:
+        # Raise an exception so it can be handled in ui.py
+        raise Exception("Server is currently down for maintenance.")
     except requests.exceptions.RequestException as e:
         raise Exception(f"Health check request failed: {e}")
     
@@ -133,7 +108,7 @@ def get_model_status(model_id):
     response.raise_for_status()
     return response.json()
 
-def wait_for_model_ready(model_id, timeout=300, poll_interval=10):
+def wait_for_model_ready(model_id, timeout=300, poll_interval=15):
     """Poll the model status until it's ready or timeout is reached."""
     start_time = time.time()
     while time.time() - start_time < timeout:
