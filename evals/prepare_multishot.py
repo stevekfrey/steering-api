@@ -1,7 +1,7 @@
 import json
 
 # sample data
-with open('evals/multishot_examples.json', 'r') as file:
+with open('evals/harmbench_behaviors_text_all.csv', 'r') as file:
     data = json.load(file)
 
 def combine_harmful_entries(data):
