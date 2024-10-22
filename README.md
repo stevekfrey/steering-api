@@ -53,7 +53,7 @@ Both LAT (Zou 2024) and CAA (Rimsky 2023) use neural activations to derive conce
 
 # Future research
 
-- Understand limitations on how control dimensions are revealed, to prevent reverse-engineering of the model weights
+- Develop ways to "route" incoming requests to activate the most relevant control vectors for that prompt. Ie activate "harmless" for prompts about harmful topics. 
 - Effects fo adding multiple control vectors together 
 - Given the parameter size of a model, how many test prompts or inputs are needed to derive the “full circuit” for a behavior? (Akin to the "Influence Functions" 2023 paper. ) 
 - Multi-agent systems with custom behaviors (e.g. a sub-agent that only writes code) 
