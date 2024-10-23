@@ -10,7 +10,7 @@ By adding or subtracting control vectors to the model's internal activations, we
 2. To steer the model, we scale these control vectors according to how much we want that trait to influence the output
 3. We apply this control vector the model during inference
 
-# Why a Steering API? (Business Context) 
+# Why a Steering API? Product context 
 
 Advantages of steering techniques over prompting and fine-tuning: 
 
@@ -27,12 +27,12 @@ Advantages of steering techniques over prompting and fine-tuning:
 - Media and gaming companies
 - Startups working on characters or consumer interactions, like elderly care, therapy, coaches and education, agents (coding, planning…)
 
-# API Documentation
+# API Documentation - What can it do? 
 
 See `api_docs.md` 
 
 
-# Research Background 
+# Research Background - How does it work? 
 The base model used is Llama-3.1-8B-Instruct. 
 
 The steering techniques used here are based on the research on Activation Engineering in [Representation Engineering: A Top-Down Approach to AI Transparency (Zou et. al. 2024)
@@ -45,7 +45,7 @@ Both LAT (Zou 2024) and CAA (Rimsky 2023) use neural activations to derive conce
 ![LAT_pipeline_diagram_Zou2024](images/LAT_pipeline_diagram_Zou2024.png)
 
 
-# Future development
+# Future features for developers
 
 - In the API, offer a standard set "pre-made" control vectors - the most commonly requested behaviors (e.g. "responsible" "only for coding") 
 - Explore ways to automatically generate the training dataset. (Buiding on Appendix C of "Steering Llama 2 via Contrastive Activation Addition")
@@ -53,11 +53,9 @@ Both LAT (Zou 2024) and CAA (Rimsky 2023) use neural activations to derive conce
 
 # Future research
 
-- Develop ways to "route" incoming requests to activate the most relevant control vectors for that prompt, i.e. activate "harmless" for prompts about harmful topics. 
-- Effects fo adding multiple control vectors together 
-- Given the parameter size of a model, how many test prompts or inputs are needed to derive the “full circuit” for a behavior? (Akin to the "Influence Functions" 2023 paper. ) 
 - Multi-agent systems with custom behaviors (e.g. a sub-agent that only writes code) 
-- How to lower inference costs for customizations like this 
+- How to lower inference costs for customizations like this
+- (Based on many-shot results) Develop ways to "route" incoming requests to activate the most relevant control vectors for that prompt, i.e. activate "harmless" for prompts about harmful topics. 
 - Customized “scoring” on new behavior dimensions. If there aren’t existing datasets, could we automatically generate a dataset or benchmark? (As shown in Appendix L of "Steering Llama 2 via Contrastive Activation Addition")
     - A naive version of this automated grading system could pass responses to Sonnet / GPT-4 with the following prompt:
     
@@ -75,6 +73,7 @@ Both LAT (Zou 2024) and CAA (Rimsky 2023) use neural activations to derive conce
     - To calibrate, we could compare scores to human-rated versions
     - However, this is subject to noise from e.g. variations in the type of model that is used to evaluate (Sonnet, GPT-4, etc)
 
+---
 
 # Contact
 
