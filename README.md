@@ -10,7 +10,7 @@ By adding or subtracting control vectors to the model's internal activations, we
 2. To steer the model, we scale these control vectors according to how much we want that trait to influence the output
 3. We apply this control vector the model during inference
 
-# Why a Steering API? (Business Context) 
+# Why a Steering API? Product context 
 
 Advantages of steering techniques over prompting and fine-tuning: 
 
@@ -27,12 +27,12 @@ Advantages of steering techniques over prompting and fine-tuning:
 - Media and gaming companies
 - Startups working on characters or consumer interactions, like elderly care, therapy, coaches and education
 
-# API Documentation
+# API Documentation - What can it do? 
 
 See `api_docs.md` 
 
 
-# Research Background 
+# Research Background - How does it work? 
 The base model used is Llama-3.1-8B-Instruct. 
 
 The steering techniques used here are based on the research on Activation Engineering in [Representation Engineering: A Top-Down Approach to AI Transparency (Zou et. al. 2024)
@@ -45,7 +45,7 @@ Both LAT (Zou 2024) and CAA (Rimsky 2023) use neural activations to derive conce
 ![LAT_pipeline_diagram_Zou2024](images/LAT_pipeline_diagram_Zou2024.png)
 
 
-# Future development
+# Future development - What's next? 
 
 - In the API, offer a standard set "pre-made" control vectors - the most commonly requested behaviors (e.g. "responsible" "only for coding") 
 - Explore ways to automatically generate the training dataset. (Buiding on Appendix C of "Steering Llama 2 via Contrastive Activation Addition")
