@@ -73,6 +73,7 @@ Both LAT (Zou 2024) and CAA (Rimsky 2023) use neural activations to derive conce
     - To calibrate, we could compare scores to human-rated versions
     - However, this is subject to noise from e.g. variations in the type of model that is used to evaluate (Sonnet, GPT-4, etc)
 
+---
 
 # Contact
 
