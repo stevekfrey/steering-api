@@ -6,9 +6,6 @@ import time
 import logging
 import sys
 import os
-import typing
-import backoff
-import requests.exceptions
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Configure logging
@@ -31,48 +28,6 @@ if not REMOTE_URL:
     raise ValueError("REMOTE_URL is not set in the environment variables")
 logger.info(f"using REMOTE_URL: {REMOTE_URL}")
 
-# Add these helper functions
-def validate_response(response: requests.Response) -> None:
-    """Validates the response from the API."""
-    try:
-        response.raise_for_status()
-        if response.headers.get('Content-Type') != 'application/json':
-            raise ValueError("Invalid Content-Type in response")
-    except requests.exceptions.RequestException as e:
-        logger.error(f"API request failed: {str(e)}")
-        raise
-
-@backoff.on_exception(
-    backoff.expo,
-    (requests.exceptions.RequestException, ValueError),
-    max_tries=3
-)
-def make_api_request(
-    method: str,
-    url: str,
-    headers: typing.Optional[typing.Dict[str, str]] = None,
-    json: typing.Optional[typing.Dict[str, typing.Any]] = None,
-    timeout: int = 30
-) -> requests.Response:
-    """Makes a robust API request with retries and validation."""
-    headers = headers or {}
-    headers.update(HEADERS)  # Add the authorization headers
-    headers['Content-Type'] = 'application/json'
-    
-    try:
-        response = requests.request(
-            method=method,
-            url=url,
-            headers=headers,
-            json=json,
-            timeout=timeout
-        )
-        validate_response(response)
-        return response
-    except Exception as e:
-        logger.error(f"API request failed: {str(e)}")
-        raise
-
 # Function to create a steerable model
 def create_steerable_model(model_label, control_dimensions, prompt_list=None):
     """Create a new steerable model."""
@@ -83,7 +38,7 @@ def create_steerable_model(model_label, control_dimensions, prompt_list=None):
         "prompt_list": prompt_list
     }
     logger.info(f"Sending POST request to {url} with payload: {payload}")
-    response = make_api_request("POST", url, json=payload)
+    response = requests.post(url, json=payload, headers=HEADERS)
     if response.status_code == 202:
         model_info = response.json()
         logger.info(f"Received response: {model_info}")
@@ -95,9 +50,8 @@ def create_steerable_model(model_label, control_dimensions, prompt_list=None):
 # Function to list all steerable models
 def list_steerable_models(limit=20, offset=0):
     """List all steerable models."""
-    url = f"{REMOTE_URL}/steerable-model"
     params = {'limit': limit, 'offset': offset}
-    response = make_api_request("GET", f"{url}?limit={limit}&offset={offset}")
+    response = requests.get(f"{REMOTE_URL}/steerable-model", params=params, headers=HEADERS)
     response.raise_for_status()
     return response.json()['data']
 
@@ -123,27 +77,29 @@ def delete_steerable_model(model_id):
 
 def generate_completion(model_id, prompt, control_settings=None, settings=None):
     """Generate a completion using the specified model and prompt."""
-    url = f"{REMOTE_URL}/completions"
     payload = {
         "model": model_id,
         "prompt": prompt,
         "control_settings": control_settings if control_settings is not None else {},
         "settings": settings if settings is not None else {"max_new_tokens": 186}
     }
-    logger.info(f"Sending POST request to {url} with payload: {payload}")
-    response = make_api_request("POST", url, json=payload)
+    response = requests.post(f"{REMOTE_URL}/completions", json=payload, headers=HEADERS)
     response.raise_for_status()
     return response.json()
 
 def health_check():
-    """Check the health of the API."""
+    """Check the health of the API by hitting the health endpoint."""
     try:
-        response = make_api_request("GET", f"{REMOTE_URL}/health", timeout=7)
-        return response.json()
+        response = requests.get(f"{REMOTE_URL}/health", headers=HEADERS, timeout=7)
+        if response.status_code == 200:
+            return response.json()
+        else:
+            raise Exception(f"Health check failed with status code {response.status_code}: {response.text}")
     except requests.exceptions.Timeout:
+        # Raise an exception so it can be handled in ui.py
         raise Exception("The server is currently offline for maintenance.")
-    except Exception as e:
-        raise Exception(f"Health check failed: {str(e)}")
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"Health check request failed: {e}")
     
 
 def get_model_status(model_id):
