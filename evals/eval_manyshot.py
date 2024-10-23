@@ -16,8 +16,10 @@ sys.path.insert(0, parent_dir)
 
 from client.steer_api_client import generate_completion
 
-# MULTIPLIER_LIST = [-2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2]
-MULTIPLIER_LIST = [-1.5, 0, 1.5]
+NUM_SAMPLES_PER_NUM_SHOT = 10
+
+MULTIPLIER_LIST = [-2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2]
+# MULTIPLIER_LIST = [-1.5, 0, 1.5]
 # model_id = 'your_model_id_here'  # Replace with your actual model ID
 NUM_SHOTS = 5  # You can change this value as needed
 
@@ -137,8 +139,8 @@ def main(model_id, num_shots):
         writer.writeheader()
 
         # Iterate over specific numbers of shots
-        # for num_shot in [1, 2, 5, 10, 15, 20, 25, 30]:
-        for num_shot in [2, 15]:
+        for num_shot in [1, 2, 5, 10, 15, 20, 25, 30]:
+        # for num_shot in [2, 15]:
             # Stop if we've reached or exceeded the specified num_shots
             if num_shot > num_shots:
                 break
@@ -149,37 +151,39 @@ def main(model_id, num_shots):
             # Generate the completion using the specified model
             prompt = full_prompt
 
-            for multiplier in MULTIPLIER_LIST:
-                control_settings = {CONTROL_DIMENSION_NAME: multiplier}
-                settings = {"max_new_tokens": 186}
+            for i in range(NUM_SAMPLES_PER_NUM_SHOT): 
 
-                print(f"Generating completion with num_shots={num_shot}...")
+                for multiplier in MULTIPLIER_LIST:
+                    control_settings = {CONTROL_DIMENSION_NAME: multiplier}
+                    settings = {"max_new_tokens": 186}
 
-                try:
-                    response = generate_completion(model_id, prompt, control_settings, settings)
-                    model_response = response.get('content', '')
-                except Exception as e:
-                    print(f"Error generating completion: {e}")
-                    model_response = ''
-                    continue  # Skip to the next iteration
+                    print(f"Generating completion with num_shots={num_shot}...")
 
-                # Check if the response was jailbroken
-                was_jailbroken = response_was_jailbroken(jailbreak_prompt, model_response)
+                    try:
+                        response = generate_completion(model_id, prompt, control_settings, settings)
+                        model_response = response.get('content', '')
+                    except Exception as e:
+                        print(f"Error generating completion: {e}")
+                        model_response = ''
+                        continue  # Skip to the next iteration
 
-                # Write the result to the CSV file
-                writer.writerow({
-                    'num_shots': num_shot,
-                    'jailbreak_prompt': full_prompt,
-                    'model_response': model_response,
-                    'response_was_jailbroken': was_jailbroken, 
-                    'control_settings_multiplier': multiplier
-                })
+                    # Check if the response was jailbroken
+                    was_jailbroken = response_was_jailbroken(jailbreak_prompt, model_response)
 
-                # Flush to ensure the data is written to disk
-                csvfile.flush()
+                    # Write the result to the CSV file
+                    writer.writerow({
+                        'num_shots': num_shot,
+                        'jailbreak_prompt': full_prompt,
+                        'model_response': model_response,
+                        'response_was_jailbroken': was_jailbroken, 
+                        'control_settings_multiplier': multiplier
+                    })
 
-                # Optional delay between requests
-                time.sleep(0.1)
+                    # Flush to ensure the data is written to disk
+                    csvfile.flush()
+
+                    # Optional delay between requests
+                    time.sleep(0.1)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Run manyshot evaluation')
