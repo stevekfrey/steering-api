@@ -25,7 +25,7 @@ Advantages of steering techniques over prompting and fine-tuning:
 - Highly regulated industries, like finance, government, medicine
 - Enterprises that just want more reliable internal tooling, or customer-facing AIs
 - Media and gaming companies
-- Startups working on characters or consumer interactions, like elderly care, therapy, coaches and education
+- Startups working on characters or consumer interactions, like elderly care, therapy, coaches and education, agents (coding, planning…)
 
 # API Documentation - What can it do? 
 
@@ -55,7 +55,7 @@ Both LAT (Zou 2024) and CAA (Rimsky 2023) use neural activations to derive conce
 
 - Multi-agent systems with custom behaviors (e.g. a sub-agent that only writes code) 
 - How to lower inference costs for customizations like this
-- (Based on many-shot results) Develop ways to "route" incoming requests to activate the most relevant control vectors for that prompt. Ie activate "harmless" for prompts about harmful topics. 
+- (Based on many-shot results) Develop ways to "route" incoming requests to activate the most relevant control vectors for that prompt, i.e. activate "harmless" for prompts about harmful topics. 
 - Customized “scoring” on new behavior dimensions. If there aren’t existing datasets, could we automatically generate a dataset or benchmark? (As shown in Appendix L of "Steering Llama 2 via Contrastive Activation Addition")
     - A naive version of this automated grading system could pass responses to Sonnet / GPT-4 with the following prompt:
     
@@ -73,6 +73,7 @@ Both LAT (Zou 2024) and CAA (Rimsky 2023) use neural activations to derive conce
     - To calibrate, we could compare scores to human-rated versions
     - However, this is subject to noise from e.g. variations in the type of model that is used to evaluate (Sonnet, GPT-4, etc)
 
+---
 
 # Contact
 

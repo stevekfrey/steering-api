@@ -169,9 +169,9 @@ def auth_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-@app.route('/', methods=['GET'])
+@app.route('/health', methods=['GET'])
 @auth_required
-def index():
+def health():
     return jsonify({"status": "success", "message": "Hello from Steer API"}), 200
 
 # Endpoint to create a steerable model

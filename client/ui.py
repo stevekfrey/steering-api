@@ -215,6 +215,9 @@ def steer_model_page():
 
     api_health_check()
 
+    # Initialize control_dimensions
+    control_dimensions = {}  # <-- Add this line
+
     ################################################
     # Create Model 
     ################################################
@@ -241,7 +244,7 @@ def steer_model_page():
     with header_cols[3]:
         st.write("**Negative Examples**")
 
-    placeholder_words = ["missionary", "savvy", "sophisticated"]
+    placeholder_words = ["enthusiastic", "curious", "savvy"]
     
     # Create dynamic rows for control dimensions
     for i in range(st.session_state.num_control_dimensions):
@@ -799,6 +802,8 @@ def main():
 
     # Create tabs
     tab1, tab2, tab3= st.tabs(["Steer API", "API Documentation", "Examples Notebook"])
+    # tab1, tab2, tab3, tab4 = st.tabs(["Steer API", "API Documentation", "Examples Notebook", "Video"]) # save for later 
+
     
     with tab1:
         steer_model_page()
@@ -813,8 +818,16 @@ def main():
         notebook_content = load_jupyter_notebook()
         st.markdown(notebook_content)
     
+    # save this tab4 for later, do not delete 
     # with tab4:
-    #     test_suite_page()
+    #     st.markdown("### Video Tutorial")
+    #     # Embed the Loom video using st.components.v1.html
+    #     st.components.v1.html("""
+    #     <div style="position: relative; padding-bottom: 56.25%; height: 0;">
+    #         <iframe src="https://www.loom.com/" frameborder="0" webkitallowfullscreen mozallowfullscreen allowfullscreen style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></iframe>
+    #     </div>
+    #     """, height=400)
+    ##########################################
 
 if __name__ == "__main__":
     main()

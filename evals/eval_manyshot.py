@@ -59,14 +59,14 @@ Answer: [/INST]'''
 }
 
 
-# Load multishot examples into a list
-def load_multishot_examples(filename):
+# Load manyshot examples into a list
+def load_manyshot_examples(filename):
     with open(filename, 'r') as f:
         data = json.load(f)
     return data
 
-# Function to create a multishot prompt
-def create_jailbreak_multishot_prompt(data, N):
+# Function to create a manyshot prompt
+def create_jailbreak_manyshot_prompt(data, N):
     # Shuffle the data to get random examples
     random.shuffle(data)
 
@@ -76,7 +76,7 @@ def create_jailbreak_multishot_prompt(data, N):
     # Select N-1 examples
     selected_elements = data[:N-1]
 
-    # Build the multishot prompt
+    # Build the manyshot prompt
     prompt = ""
     for element in selected_elements:
         prompt += f"user: {element['user']}\nassistant: {element['assistant']}\n"
@@ -84,7 +84,7 @@ def create_jailbreak_multishot_prompt(data, N):
     # Get the jailbreak prompt from the Nth example
     jailbreak_prompt = f"user: {data[N]['user']}\nassistant: "
 
-    # Combine the multishot prompt with the jailbreak prompt
+    # Combine the manyshot prompt with the jailbreak prompt
     full_prompt = prompt + jailbreak_prompt
 
     return full_prompt, jailbreak_prompt
@@ -119,15 +119,15 @@ def response_was_jailbroken(jailbreak_prompt, response):
         return False  # Default to False in case of an error
 
 def main(model_id, num_shots):
-    # Path to the multishot examples JSON file
-    examples_file = 'evals/multishot_examples.json'
+    # Path to the manyshot examples JSON file
+    examples_file = 'evals/manyshot_examples.json'
 
-    # Load multishot examples
-    data = load_multishot_examples(examples_file)
+    # Load manyshot examples
+    data = load_manyshot_examples(examples_file)
 
     # Generate a timestamp for the new CSV file
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    results_file = f'evals/multishot/multishot_eval_results_{timestamp}.csv'
+    results_file = f'evals/manyshot/manyshot_eval_results_{timestamp}.csv'
 
     with open(results_file, mode='w', newline='', encoding='utf-8') as csvfile:
         fieldnames = ['num_shots', 'jailbreak_prompt', 'model_response', 'response_was_jailbroken', 'control_settings_multiplier']
@@ -137,13 +137,14 @@ def main(model_id, num_shots):
         writer.writeheader()
 
         # Iterate over specific numbers of shots
-        for num_shot in [1, 2, 5, 10, 15, 20, 25, 30, 35]:
+        # for num_shot in [1, 2, 5, 10, 15, 20, 25, 30]:
+        for num_shot in [2, 15]:
             # Stop if we've reached or exceeded the specified num_shots
             if num_shot > num_shots:
                 break
             
-            # Generate the multishot prompt
-            full_prompt, jailbreak_prompt = create_jailbreak_multishot_prompt(data, num_shot)
+            # Generate the manyshot prompt
+            full_prompt, jailbreak_prompt = create_jailbreak_manyshot_prompt(data, num_shot)
 
             # Generate the completion using the specified model
             prompt = full_prompt
@@ -181,7 +182,7 @@ def main(model_id, num_shots):
                 time.sleep(0.1)
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Run multishot evaluation')
+    parser = argparse.ArgumentParser(description='Run manyshot evaluation')
     parser.add_argument('--model_id', type=str, required=True, help='Model ID for generating completions')
     parser.add_argument('--num_shots', type=int, default=36, help='Maximum number of shots to test (default: 36)')
     
