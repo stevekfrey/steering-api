@@ -45,7 +45,7 @@ Both LAT (Zou 2024) and CAA (Rimsky 2023) use neural activations to derive conce
 ![LAT_pipeline_diagram_Zou2024](images/LAT_pipeline_diagram_Zou2024.png)
 
 
-# Future development - What's next? 
+# Future features for developers
 
 - In the API, offer a standard set "pre-made" control vectors - the most commonly requested behaviors (e.g. "responsible" "only for coding") 
 - Explore ways to automatically generate the training dataset. (Buiding on Appendix C of "Steering Llama 2 via Contrastive Activation Addition")
@@ -53,11 +53,9 @@ Both LAT (Zou 2024) and CAA (Rimsky 2023) use neural activations to derive conce
 
 # Future research
 
-- Develop ways to "route" incoming requests to activate the most relevant control vectors for that prompt. Ie activate "harmless" for prompts about harmful topics. 
-- Effects fo adding multiple control vectors together 
-- Given the parameter size of a model, how many test prompts or inputs are needed to derive the “full circuit” for a behavior? (Akin to the "Influence Functions" 2023 paper. ) 
 - Multi-agent systems with custom behaviors (e.g. a sub-agent that only writes code) 
-- How to lower inference costs for customizations like this 
+- How to lower inference costs for customizations like this
+- (Based on many-shot results) Develop ways to "route" incoming requests to activate the most relevant control vectors for that prompt. Ie activate "harmless" for prompts about harmful topics. 
 - Customized “scoring” on new behavior dimensions. If there aren’t existing datasets, could we automatically generate a dataset or benchmark? (As shown in Appendix L of "Steering Llama 2 via Contrastive Activation Addition")
     - A naive version of this automated grading system could pass responses to Sonnet / GPT-4 with the following prompt:
     
