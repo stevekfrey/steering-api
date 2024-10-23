@@ -244,7 +244,7 @@ def steer_model_page():
     with header_cols[3]:
         st.write("**Negative Examples**")
 
-    placeholder_words = ["missionary", "savvy", "sophisticated"]
+    placeholder_words = ["enthusiastic", "curious", "savvy"]
     
     # Create dynamic rows for control dimensions
     for i in range(st.session_state.num_control_dimensions):

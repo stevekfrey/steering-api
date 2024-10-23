@@ -90,7 +90,7 @@ def generate_completion(model_id, prompt, control_settings=None, settings=None):
 def health_check():
     """Check the health of the API by hitting the health endpoint."""
     try:
-        response = requests.get(f"{REMOTE_URL}/health", headers=HEADERS, timeout=7)
+        response = requests.get(f"{REMOTE_URL}/", headers=HEADERS, timeout=7)
         if response.status_code == 200:
             return response.json()
         else:

@@ -62,7 +62,7 @@ app.config['MODEL'], app.config['TOKENIZER'] = load_model()
 app.config['MODEL_NAME'] = BASE_MODEL_NAME
 
 # Load and concatenate prompt lists for specified types
-PROMPT_TYPES = ["facts", "emotions"]
+PROMPT_TYPES = ["facts", "emotions", "all_truncated_outputs"]
 ALL_PROMPTS = []
 
 for prompt_type in PROMPT_TYPES:

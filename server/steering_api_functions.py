@@ -21,7 +21,7 @@ from repeng import ControlVector, DatasetEntry
 from transformers import pipeline
 from typing import Optional, Dict, Any
 import requests.exceptions
-import backoff  # You'll need to pip install backoff
+import time  # Added import for time.sleep
 
 from steer_templates import DEFAULT_TEMPLATE, DEFAULT_PROMPT_LIST, user_tag, asst_tag, BASE_MODEL_NAME
 
@@ -797,7 +797,10 @@ def generate_completion_response_honesty(
     logger.info('Completion generated', extra={'response_model_id': response['model_id']})
     return response
 
-# Add these helper functions for robust API interactions
+################################################
+# Helper Functions for Robust API Interactions
+################################################
+
 def validate_response(response: requests.Response) -> None:
     """Validates the response from the API."""
     try:
@@ -808,32 +811,38 @@ def validate_response(response: requests.Response) -> None:
         logger.error(f"API request failed: {str(e)}")
         raise
 
-@backoff.on_exception(
-    backoff.expo,
-    (requests.exceptions.RequestException, ValueError),
-    max_tries=3
-)
 def make_api_request(
     method: str,
     url: str,
     headers: Optional[Dict[str, str]] = None,
     json: Optional[Dict[str, Any]] = None,
-    timeout: int = 30
+    timeout: int = 30,
+    max_retries: int = 3,
+    backoff_factor: float = 0.5
 ) -> requests.Response:
     """Makes a robust API request with retries and validation."""
     headers = headers or {}
     headers['Content-Type'] = 'application/json'
     
-    try:
-        response = requests.request(
-            method=method,
-            url=url,
-            headers=headers,
-            json=json,
-            timeout=timeout
-        )
-        validate_response(response)
-        return response
-    except Exception as e:
-        logger.error(f"API request failed: {str(e)}")
-        raise
+    for attempt in range(1, max_retries + 1):
+        try:
+            response = requests.request(
+                method=method,
+                url=url,
+                headers=headers,
+                json=json,
+                timeout=timeout
+            )
+            validate_response(response)
+            return response
+        except (requests.exceptions.RequestException, ValueError) as e:
+            logger.error(f"API request failed on attempt {attempt}: {str(e)}")
+            if attempt == max_retries:
+                logger.error("Max retries exceeded. Request failed.")
+                raise
+            else:
+                sleep_time = backoff_factor * (2 ** (attempt - 1))
+                logger.info(
+                    f"Retrying API request in {sleep_time} seconds (attempt {attempt + 1} of {max_retries})"
+                )
+                time.sleep(sleep_time)
