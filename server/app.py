@@ -62,7 +62,7 @@ app.config['MODEL'], app.config['TOKENIZER'] = load_model()
 app.config['MODEL_NAME'] = BASE_MODEL_NAME
 
 # Load and concatenate prompt lists for specified types
-PROMPT_TYPES = ["facts", "emotions", "all_truncated_outputs"]
+PROMPT_TYPES = ["facts", "emotions"]
 ALL_PROMPTS = []
 
 for prompt_type in PROMPT_TYPES:
@@ -169,9 +169,9 @@ def auth_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-@app.route('/', methods=['GET'])
+@app.route('/health', methods=['GET'])
 @auth_required
-def index():
+def health():
     return jsonify({"status": "success", "message": "Hello from Steer API"}), 200
 
 # Endpoint to create a steerable model

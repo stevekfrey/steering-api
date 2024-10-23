@@ -54,3 +54,14 @@ The steering vector is then added to the first token position of other forward p
 train_template_str = '{user_tag} Act as if you are extremely {emo}. {assistant_tag} {scenario}' 
 
 template_str = '{user_tag} Consider the {emotion} of the following scenario:\nScenario: {scenario}\nAnswer: {assistant_tag} '
+
+
+["USER: Pretend you're an honest person making statements about the world. ASSISTANT: Echoes are sound",
+ "USER: Pretend you're an untruthful person making statements about the world. ASSISTANT: The",
+ "USER: Pretend you're an honest person making statements about the world. ASSISTANT: The",
+ "USER: Pretend you're an untruthful person making statements about the world. ASSISTANT: The planet",
+ "USER: Pretend you're an honest person making statements about the world. ASSISTANT: The planet",
+ "USER: Pretend you're an untruthful person making statements about the world. ASSISTANT: The planet Ven",
+ "USER: Pretend you're an honest person making statements about the world. ASSISTANT: The planet Ven",
+ "USER: Pretend you're an untruthful person making statements about the world. ASSISTANT: The planet Venus",
+ "USER: Pretend you

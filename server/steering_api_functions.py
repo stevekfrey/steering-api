@@ -19,8 +19,11 @@ import pandas as pd
 from typing import List, Dict
 from repeng import ControlVector, DatasetEntry
 from transformers import pipeline
+from typing import Optional, Dict, Any
+import requests.exceptions
+import backoff  # You'll need to pip install backoff
 
-from server.steer_templates import DEFAULT_TEMPLATE, DEFAULT_PROMPT_LIST, user_tag, asst_tag, BASE_MODEL_NAME
+from steer_templates import DEFAULT_TEMPLATE, DEFAULT_PROMPT_LIST, user_tag, asst_tag, BASE_MODEL_NAME
 
 # Initialize a logger for this module
 logger = logging.getLogger(__name__)
@@ -794,6 +797,43 @@ def generate_completion_response_honesty(
     logger.info('Completion generated', extra={'response_model_id': response['model_id']})
     return response
 
+# Add these helper functions for robust API interactions
+def validate_response(response: requests.Response) -> None:
+    """Validates the response from the API."""
+    try:
+        response.raise_for_status()
+        if response.headers.get('Content-Type') != 'application/json':
+            raise ValueError("Invalid Content-Type in response")
+    except requests.exceptions.RequestException as e:
+        logger.error(f"API request failed: {str(e)}")
+        raise
 
-
-
+@backoff.on_exception(
+    backoff.expo,
+    (requests.exceptions.RequestException, ValueError),
+    max_tries=3
+)
+def make_api_request(
+    method: str,
+    url: str,
+    headers: Optional[Dict[str, str]] = None,
+    json: Optional[Dict[str, Any]] = None,
+    timeout: int = 30
+) -> requests.Response:
+    """Makes a robust API request with retries and validation."""
+    headers = headers or {}
+    headers['Content-Type'] = 'application/json'
+    
+    try:
+        response = requests.request(
+            method=method,
+            url=url,
+            headers=headers,
+            json=json,
+            timeout=timeout
+        )
+        validate_response(response)
+        return response
+    except Exception as e:
+        logger.error(f"API request failed: {str(e)}")
+        raise

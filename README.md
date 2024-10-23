@@ -25,7 +25,7 @@ Advantages of steering techniques over prompting and fine-tuning:
 - Highly regulated industries, like finance, government, medicine
 - Enterprises that just want more reliable internal tooling, or customer-facing AIs
 - Media and gaming companies
-- Startups working on characters or consumer interactions, like elderly care, therapy, coaches and education
+- Startups working on characters or consumer interactions, like elderly care, therapy, coaches and education, agents (coding, planning…)
 
 # API Documentation
 
@@ -53,7 +53,7 @@ Both LAT (Zou 2024) and CAA (Rimsky 2023) use neural activations to derive conce
 
 # Future research
 
-- Develop ways to "route" incoming requests to activate the most relevant control vectors for that prompt. Ie activate "harmless" for prompts about harmful topics. 
+- Develop ways to "route" incoming requests to activate the most relevant control vectors for that prompt, i.e. activate "harmless" for prompts about harmful topics. 
 - Effects fo adding multiple control vectors together 
 - Given the parameter size of a model, how many test prompts or inputs are needed to derive the “full circuit” for a behavior? (Akin to the "Influence Functions" 2023 paper. ) 
 - Multi-agent systems with custom behaviors (e.g. a sub-agent that only writes code) 
