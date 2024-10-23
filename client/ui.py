@@ -248,10 +248,11 @@ def steer_model_page():
     
     # Create dynamic rows for control dimensions
     for i in range(st.session_state.num_control_dimensions):
-        if f'positive_examples_{i}' not in st.session_state:
-            st.session_state[f'positive_examples_{i}'] = "example1\nexample2"
-        if f'negative_examples_{i}' not in st.session_state:
-            st.session_state[f'negative_examples_{i}'] = "example3\nexample4"
+        # Remove the default initialization of session state here
+        # if f'positive_examples_{i}' not in st.session_state:
+        #     st.session_state[f'positive_examples_{i}'] = "example1\nexample2"
+        # if f'negative_examples_{i}' not in st.session_state:
+        #     st.session_state[f'negative_examples_{i}'] = "example3\nexample4"
 
         row_cols = st.columns([1, 1, 1, 1])
         with row_cols[0]:
@@ -282,20 +283,24 @@ def steer_model_page():
                         except Exception as e:
                             st.error(f"Failed to parse generated examples: {str(e)}")
         with row_cols[2]:
+            # Set default value directly in the text_area instead
+            default_positive = "example1\nexample2"
             st.text_area(
                 label=f"Positive Examples {i+1}",
                 key=f"positive_examples_{i}",
                 height=150,
                 label_visibility="collapsed",
-                value=st.session_state[f'positive_examples_{i}']
+                value=default_positive if f'positive_examples_{i}' not in st.session_state else st.session_state[f'positive_examples_{i}']
             )
         with row_cols[3]:
+            # Set default value directly in the text_area instead
+            default_negative = "example3\nexample4"
             st.text_area(
                 label=f"Negative Examples {i+1}",
                 key=f"negative_examples_{i}",
                 height=150,
                 label_visibility="collapsed",
-                value=st.session_state[f'negative_examples_{i}']
+                value=default_negative if f'negative_examples_{i}' not in st.session_state else st.session_state[f'negative_examples_{i}']
             )
 
     # Button to add new control dimension
