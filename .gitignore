@@ -21,6 +21,8 @@ evals/manyshot_examples.json
 evals/combined_harmful_entries.txt
 evals/initial results.md
 evals/harmbench_behaviors_text_all.csv
-/evals/manyshot
+evals/manyshot
 evals/jailbreak_responses_plot.png
 evals/total_jailbreak_responses_by_multiplier.png
+evals/manyshot_eval_results.csv
+evals/jailbreak_responses_bar_plot.png
