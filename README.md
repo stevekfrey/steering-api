@@ -50,13 +50,12 @@ Both LAT (Zou 2024) and CAA (Rimsky 2023) use neural activations to derive conce
 - In the API, offer a standard set "pre-made" control vectors - the most commonly requested behaviors (e.g. "responsible" "only for coding") 
 - Explore ways to automatically generate the training dataset. (Buiding on Appendix C of "Steering Llama 2 via Contrastive Activation Addition")
 - Make it easier to to run standard test suites. Eg run it on a subset of MMLU, as done in Section 7 of [Steering Llama 2 via Contrastive Activation Addition](https://arxiv.org/html/2312.06681v2).
+- How to lower inference costs for customizations like this
 
 # Future research
-
-- Multi-agent systems with custom behaviors (e.g. a sub-agent that only writes code) 
-- How to lower inference costs for customizations like this
 - (Based on many-shot results) Develop ways to "route" incoming requests to activate the most relevant control vectors for that prompt, i.e. activate "harmless" for prompts about harmful topics. 
-- Customized “scoring” on new behavior dimensions. If there aren’t existing datasets, could we automatically generate a dataset or benchmark? (As shown in Appendix L of "Steering Llama 2 via Contrastive Activation Addition")
+- Multi-agent systems with custom behaviors (e.g. a sub-agent that only writes code) 
+- Quickly "grade" model behavior on arbitrary traits. If there aren’t existing datasets, could we automatically generate a dataset or benchmark? (As shown in Appendix L of "Steering Llama 2 via Contrastive Activation Addition")
     - A naive version of this automated grading system could pass responses to Sonnet / GPT-4 with the following prompt:
     
     ```
