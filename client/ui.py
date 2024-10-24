@@ -785,7 +785,7 @@ def load_api_docs():
 
 def load_jupyter_notebook():
     """Load and return the content of the Jupyter notebook as markdown."""
-    notebook_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'quickstart', 'samples.ipynb')
+    notebook_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'quickstart', 'quickstart.ipynb')
     try:
         with open(notebook_path, 'r', encoding='utf-8') as file:
             notebook = nbformat.read(file, as_version=4)
@@ -806,8 +806,8 @@ def main():
     st.set_page_config(page_title="Steerable Models App", layout="wide")
 
     # Create tabs
-    tab1, tab2, tab3= st.tabs(["Steer API", "API Documentation", "Examples Notebook"])
-    # tab1, tab2, tab3, tab4 = st.tabs(["Steer API", "API Documentation", "Examples Notebook", "Video"]) # save for later 
+    # tab1, tab2, tab3= st.tabs(["Steer API", "API Documentation", "Examples Notebook"])
+    tab1, tab2, tab3, tab4 = st.tabs(["Steer API", "API Documentation", "Examples Notebook", "Video"]) # save for later 
 
     
     with tab1:
@@ -824,14 +824,10 @@ def main():
         st.markdown(notebook_content)
     
     # save this tab4 for later, do not delete 
-    # with tab4:
-    #     st.markdown("### Video Tutorial")
-    #     # Embed the Loom video using st.components.v1.html
-    #     st.components.v1.html("""
-    #     <div style="position: relative; padding-bottom: 56.25%; height: 0;">
-    #         <iframe src="https://www.loom.com/" frameborder="0" webkitallowfullscreen mozallowfullscreen allowfullscreen style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></iframe>
-    #     </div>
-    #     """, height=400)
+    with tab4:
+        st.markdown ("### [Watch the Loom Video Walkthrough](https://www.loom.com/embed/699137d6c9ff4fb4b803a2230520dabe?sid=8ca3a85d-b3bd-4115-bee3-94c92e5ed176)")
+
+
     ##########################################
 
 if __name__ == "__main__":
