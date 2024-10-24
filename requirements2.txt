@@ -30,6 +30,8 @@ attrs==24.2.0
     #   aiohttp
     #   jsonschema
     #   referencing
+
+backoff=2.2.1
 blinker==1.8.2
     # via
     #   flask
@@ -307,6 +309,8 @@ torch==2.4.0
     #   -r requirements.txt
     #   accelerate
     #   repeng
+
+torchvision==0.20.0
 tornado==6.4.1
     # via streamlit
 tqdm==4.66.5

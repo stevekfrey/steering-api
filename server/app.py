@@ -169,7 +169,7 @@ def auth_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-@app.route('/health', methods=['GET'])
+@app.route('/', methods=['GET'])
 @auth_required
 def health():
     return jsonify({"status": "success", "message": "Hello from Steer API"}), 200

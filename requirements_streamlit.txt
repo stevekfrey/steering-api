@@ -5,3 +5,4 @@ python-dotenv
 litellm
 nbformat
 nbconvert
+backoff
